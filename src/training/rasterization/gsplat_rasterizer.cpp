@@ -23,6 +23,7 @@ namespace lfs::training {
         bool antialiased,
         GsplatRenderMode render_mode,
         bool use_gut,
+        const core::Tensor* opacity_override,
         const core::Tensor& bg_image) {
 
         // Begin arena frame for memory allocation
@@ -54,7 +55,9 @@ namespace lfs::training {
 
         // Get Gaussian parameters (activated) - ensure contiguous
         auto means = gaussian_model.get_means().contiguous();
-        auto opacities = gaussian_model.get_opacity().contiguous(); // [N] sigmoid applied
+        auto opacities = opacity_override && opacity_override->is_valid() && opacity_override->numel() > 0
+                             ? opacity_override->contiguous()
+                             : gaussian_model.get_opacity().contiguous(); // [N] sigmoid applied
         auto scales = gaussian_model.get_scaling().contiguous();    // [N, 3] exp applied
         auto quats = gaussian_model.get_rotation().contiguous();    // [N, 4] normalized
         auto sh_coeffs = gaussian_model.get_shs().contiguous();     // [N, K, 3]
@@ -420,7 +423,8 @@ namespace lfs::training {
         const core::Tensor& grad_image,
         const core::Tensor& grad_alpha,
         core::SplatData& gaussian_model,
-        AdamOptimizer& optimizer) {
+        AdamOptimizer& optimizer,
+        const GsplatClodBackwardData* clod_data) {
 
         // Get arena for temporary allocations
         auto& arena = core::GlobalArenaManager::instance().get_arena();
@@ -596,14 +600,43 @@ namespace lfs::training {
             LOG_ERROR("CUDA error AFTER exp_backward: {}", cudaGetErrorString(err_exp));
         }
 
-        // Opacities: sigmoid(raw) -> v_opacities_raw = v_opacities * sigmoid * (1 - sigmoid)
-        // In-place: v_opacities_ptr *= sigmoid * (1 - sigmoid)
-        kernels::launch_sigmoid_backward(v_opacities_ptr, ctx.opacities.ptr<float>(), N, nullptr);
+        core::Tensor clod_grad_opacity_raw;
+        core::Tensor clod_grad_sigma_raw;
+        if (clod_data != nullptr) {
+            // CLoD chain rule:
+            // alpha_eff = alpha * attenuation * M
+            // alpha = sigmoid(opacity_raw), attenuation = exp(-dist_sq/(2*sigma^2+eps)), sigma=ReLU(sigma_raw)
+            core::Tensor grad_effective = core::Tensor::from_blob(
+                v_opacities_ptr, {N}, core::Device::CUDA, core::DataType::Float32);
+            const core::Tensor mask_f = clod_data->mask.dtype() == core::DataType::Bool
+                                            ? clod_data->mask.to(core::DataType::Float32)
+                                            : clod_data->mask;
+            grad_effective = grad_effective * mask_f;
 
-        cudaDeviceSynchronize();
-        auto err_sigmoid = cudaGetLastError();
-        if (err_sigmoid != cudaSuccess) {
-            LOG_ERROR("CUDA error AFTER sigmoid_backward: {}", cudaGetErrorString(err_sigmoid));
+            const core::Tensor grad_base_opacity = grad_effective * clod_data->attenuation;
+            const core::Tensor grad_attenuation = grad_effective * clod_data->base_opacity;
+
+            const core::Tensor sigma = clod_data->sigma;
+            const core::Tensor denom = sigma.square() * 2.0f + clod_data->eps;
+            const core::Tensor denom_sq = denom.square();
+            const core::Tensor d_atten_d_sigma =
+                clod_data->attenuation * (clod_data->dist_scaled_sq * sigma * 4.0f / denom_sq);
+            const core::Tensor relu_mask = clod_data->sigma_raw.gt(0.0f).to(core::DataType::Float32);
+
+            clod_grad_sigma_raw = (grad_attenuation * d_atten_d_sigma * relu_mask).contiguous();
+            clod_grad_opacity_raw = (grad_base_opacity * clod_data->base_opacity *
+                                     (core::Tensor::ones_like(clod_data->base_opacity) - clod_data->base_opacity))
+                                        .contiguous();
+        } else {
+            // Opacities: sigmoid(raw) -> v_opacities_raw = v_opacities * sigmoid * (1 - sigmoid)
+            // In-place: v_opacities_ptr *= sigmoid * (1 - sigmoid)
+            kernels::launch_sigmoid_backward(v_opacities_ptr, ctx.opacities.ptr<float>(), N, nullptr);
+
+            cudaDeviceSynchronize();
+            auto err_sigmoid = cudaGetLastError();
+            if (err_sigmoid != cudaSuccess) {
+                LOG_ERROR("CUDA error AFTER sigmoid_backward: {}", cudaGetErrorString(err_sigmoid));
+            }
         }
 
         // Quaternions: normalize(raw) -> need Jacobian of normalization
@@ -648,11 +681,25 @@ namespace lfs::training {
             nullptr);
 
         // Opacities: [N] -> [N, 1] (same memory layout)
-        kernels::launch_grad_accumulate_unsqueeze(
-            optimizer.get_grad(ParamType::Opacity).ptr<float>(),
-            v_opacities_ptr,
-            N,
-            nullptr);
+        if (clod_data != nullptr) {
+            kernels::launch_grad_accumulate_unsqueeze(
+                optimizer.get_grad(ParamType::Opacity).ptr<float>(),
+                clod_grad_opacity_raw.ptr<float>(),
+                N,
+                nullptr);
+
+            kernels::launch_grad_accumulate_unsqueeze(
+                optimizer.get_grad(ParamType::ClodSigma).ptr<float>(),
+                clod_grad_sigma_raw.ptr<float>(),
+                N,
+                nullptr);
+        } else {
+            kernels::launch_grad_accumulate_unsqueeze(
+                optimizer.get_grad(ParamType::Opacity).ptr<float>(),
+                v_opacities_ptr,
+                N,
+                nullptr);
+        }
 
         // SH coefficients: [N, K, 3] -> sh0 [N, 1, 3] + shN [N, K_dst, 3]
         // K is active SH coeffs, K_dst is the full buffer width (max_sh_degree^2 - 1)

@@ -114,6 +114,7 @@ namespace lfs::core {
                          Tensor scaling_,
                          Tensor rotation_,
                          Tensor opacity_,
+                         Tensor clod_sigma_,
                          float scene_scale_)
         : _max_sh_degree(sh_degree),
           _active_sh_degree(sh_degree), // Set to max degree when loading; training will override this
@@ -123,7 +124,11 @@ namespace lfs::core {
           _shN(std::move(shN_)),
           _scaling(std::move(scaling_)),
           _rotation(std::move(rotation_)),
-          _opacity(std::move(opacity_)) {
+          _opacity(std::move(opacity_)),
+          _clod_sigma(std::move(clod_sigma_)) {
+        if (!_clod_sigma.is_valid() && _means.is_valid()) {
+            _clod_sigma = Tensor::full({_means.size(0), 1}, 1.0f, _means.device(), DataType::Float32);
+        }
     }
 
     SplatData::~SplatData() = default;
@@ -140,6 +145,7 @@ namespace lfs::core {
           _scaling(std::move(other._scaling)),
           _rotation(std::move(other._rotation)),
           _opacity(std::move(other._opacity)),
+          _clod_sigma(std::move(other._clod_sigma)),
           _densification_info(std::move(other._densification_info)),
           _deleted(std::move(other._deleted)) {
         // Reset the moved-from object
@@ -162,6 +168,7 @@ namespace lfs::core {
             _scaling = std::move(other._scaling);
             _rotation = std::move(other._rotation);
             _opacity = std::move(other._opacity);
+            _clod_sigma = std::move(other._clod_sigma);
             _densification_info = std::move(other._densification_info);
             _deleted = std::move(other._deleted);
         }
@@ -191,6 +198,10 @@ namespace lfs::core {
 
     Tensor SplatData::get_scaling() const {
         return _scaling.exp();
+    }
+
+    Tensor SplatData::get_clod_sigma() const {
+        return _clod_sigma.relu();
     }
 
     Tensor SplatData::get_shs() const {
@@ -231,6 +242,8 @@ namespace lfs::core {
             _rotation.reserve(capacity);
         if (_opacity.is_valid())
             _opacity.reserve(capacity);
+        if (_clod_sigma.is_valid())
+            _clod_sigma.reserve(capacity);
     }
 
     // ========== SOFT DELETION ==========
@@ -312,6 +325,11 @@ namespace lfs::core {
             _deleted = Tensor();
             return 0;
         }
+        if (_clod_sigma.is_valid() && _clod_sigma.size(0) != old_size) {
+            LOG_ERROR("apply_deleted: clod sigma size mismatch, aborting");
+            _deleted = Tensor();
+            return 0;
+        }
 
         const auto keep_mask = _deleted.logical_not();
         const size_t new_size = static_cast<size_t>(keep_mask.sum_scalar());
@@ -336,6 +354,10 @@ namespace lfs::core {
         auto new_scaling = _scaling.index_select(0, keep_mask);
         auto new_rotation = _rotation.index_select(0, keep_mask);
         auto new_opacity = _opacity.index_select(0, keep_mask);
+        Tensor new_clod_sigma;
+        if (_clod_sigma.is_valid()) {
+            new_clod_sigma = _clod_sigma.index_select(0, keep_mask);
+        }
 
         // Verify new sizes are correct before committing
         if (new_means.size(0) != new_size || new_sh0.size(0) != new_size ||
@@ -353,6 +375,9 @@ namespace lfs::core {
         _scaling = std::move(new_scaling);
         _rotation = std::move(new_rotation);
         _opacity = std::move(new_opacity);
+        if (new_clod_sigma.is_valid()) {
+            _clod_sigma = std::move(new_clod_sigma);
+        }
 
         if (_shN.is_valid() && _shN.size(0) == old_size) {
             _shN = _shN.index_select(0, keep_mask);
@@ -373,7 +398,7 @@ namespace lfs::core {
 
     namespace {
         constexpr uint32_t SPLAT_DATA_MAGIC = 0x4C465350; // "LFSP"
-        constexpr uint32_t SPLAT_DATA_VERSION = 3;
+        constexpr uint32_t SPLAT_DATA_VERSION = 4;
     } // namespace
 
     void SplatData::serialize(std::ostream& os) const {
@@ -384,6 +409,7 @@ namespace lfs::core {
         os.write(reinterpret_cast<const char*>(&_scene_scale), sizeof(_scene_scale));
 
         os << _means << _sh0 << _scaling << _rotation << _opacity;
+        os << _clod_sigma;
 
         if (_max_sh_degree > 0) {
             if (!_shN.is_valid()) {
@@ -413,7 +439,7 @@ namespace lfs::core {
         if (magic != SPLAT_DATA_MAGIC) {
             throw std::runtime_error("Invalid SplatData: wrong magic");
         }
-        if (version != SPLAT_DATA_VERSION) {
+        if (version != 3 && version != SPLAT_DATA_VERSION) {
             throw std::runtime_error("Unsupported SplatData version: " + std::to_string(version));
         }
 
@@ -423,14 +449,22 @@ namespace lfs::core {
         is.read(reinterpret_cast<char*>(&max_sh), sizeof(max_sh));
         is.read(reinterpret_cast<char*>(&scene_scale), sizeof(scene_scale));
 
-        Tensor means, sh0, scaling, rotation, opacity;
+        Tensor means, sh0, scaling, rotation, opacity, clod_sigma;
         is >> means >> sh0 >> scaling >> rotation >> opacity;
+        if (version >= 4) {
+            is >> clod_sigma;
+        }
 
         _means = std::move(means).cuda();
         _sh0 = std::move(sh0).cuda();
         _scaling = std::move(scaling).cuda();
         _rotation = std::move(rotation).cuda();
         _opacity = std::move(opacity).cuda();
+        if (version >= 4) {
+            _clod_sigma = std::move(clod_sigma).cuda();
+        } else {
+            _clod_sigma = Tensor::full({_means.size(0), 1}, 1.0f, _means.device(), DataType::Float32);
+        }
         _active_sh_degree = active_sh;
         _max_sh_degree = max_sh;
         _scene_scale = scene_scale;
@@ -544,7 +578,7 @@ namespace lfs::core {
                 std::pow(params.optimization.sh_degree + 1, 2));
 
             // Create final tensors first to avoid pool allocations
-            Tensor means_, scaling_, rotation_, opacity_, sh0_, shN_;
+        Tensor means_, scaling_, rotation_, opacity_, clod_sigma_, sh0_, shN_;
 
             if (capacity > 0 && capacity < num_points) {
                 LOG_DEBUG("capacity {} was lower than num_points {}.  Matching capacity to points. ", capacity, num_points);
@@ -578,6 +612,12 @@ namespace lfs::core {
                           opacity_.is_valid(), static_cast<void*>(opacity_.ptr<float>()),
                           opacity_.shape().str(), opacity_.numel());
 
+                clod_sigma_ = Tensor::zeros_direct(TensorShape({num_points, 1}), capacity);
+                clod_sigma_.set_name("SplatData.clod_sigma");
+                LOG_DEBUG("  clod_sigma_ allocated: is_valid={}, ptr={}, shape={}, numel={}",
+                          clod_sigma_.is_valid(), static_cast<void*>(clod_sigma_.ptr<float>()),
+                          clod_sigma_.shape().str(), clod_sigma_.numel());
+
                 sh0_ = Tensor::zeros_direct(TensorShape({num_points, 1, 3}), capacity);
                 sh0_.set_name("SplatData.sh0");
                 LOG_DEBUG("  sh0_ allocated: is_valid={}, ptr={}, shape={}, numel={}",
@@ -594,7 +634,7 @@ namespace lfs::core {
             }
 
             // Compute parameter values on CPU to avoid pool allocations
-            Tensor means_cpu, scaling_cpu, rotation_cpu, opacity_cpu, sh0_cpu, shN_cpu;
+            Tensor means_cpu, scaling_cpu, rotation_cpu, opacity_cpu, clod_sigma_cpu, sh0_cpu, shN_cpu;
 
             if (capacity > 0) {
                 LOG_DEBUG("Computing values on CPU");
@@ -654,6 +694,9 @@ namespace lfs::core {
                 LOG_DEBUG("  opacity_cpu computed: is_valid={}, ptr={}, shape={}, numel={}",
                           opacity_cpu.is_valid(), static_cast<const void*>(opacity_cpu.ptr<float>()),
                           opacity_cpu.shape().str(), opacity_cpu.numel());
+
+                // Initialize CLoD sigma_d raw to positive value so ReLU is active
+                clod_sigma_cpu = Tensor::full({num_points, 1}, 1.0f, Device::CPU);
 
                 // Compute SH coefficients on CPU
                 LOG_DEBUG("  Computing SH coefficients...");
@@ -809,6 +852,12 @@ namespace lfs::core {
                 LOG_DEBUG("  SHN copy successful");
 
                 LOG_DEBUG("All CPU to CUDA copies completed successfully");
+
+                err = cudaMemcpy(clod_sigma_.ptr<float>(), clod_sigma_cpu.ptr<float>(),
+                                 clod_sigma_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
+                if (err != cudaSuccess) {
+                    throw TensorError("cudaMemcpy failed for clod_sigma: " + std::string(cudaGetErrorString(err)));
+                }
             } else {
                 // No capacity specified - use pool
                 Tensor means_temp;
@@ -832,6 +881,7 @@ namespace lfs::core {
                 auto rotation_temp = ones_col.cat(zeros_cols, 1);
 
                 auto opacity_temp = Tensor::full({num_points, 1}, params.optimization.init_opacity, Device::CUDA).logit();
+                auto clod_sigma_temp = Tensor::full({num_points, 1}, 1.0f, Device::CUDA);
 
                 auto colors_device = colors.cuda();
                 auto fused_color = rgb_to_sh(colors_device);
@@ -863,6 +913,7 @@ namespace lfs::core {
                 scaling_ = scaling_temp;
                 rotation_ = rotation_temp;
                 opacity_ = opacity_temp;
+                clod_sigma_ = clod_sigma_temp;
                 sh0_ = sh0_temp;
                 shN_ = shN_temp;
             }
@@ -879,6 +930,7 @@ namespace lfs::core {
                 std::move(scaling_),
                 std::move(rotation_),
                 std::move(opacity_),
+                std::move(clod_sigma_),
                 scene_scale);
 
             return result;

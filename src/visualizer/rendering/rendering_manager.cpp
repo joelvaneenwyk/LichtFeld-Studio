@@ -23,6 +23,7 @@
 #include <cuda_runtime.h>
 #include <glad/glad.h>
 #include <glm/gtc/type_ptr.hpp>
+#include <cmath>
 #include <shared_mutex>
 #include <stdexcept>
 
@@ -30,6 +31,10 @@ namespace lfs::vis {
 
     namespace {
         constexpr int GPU_ALIGNMENT = 16; // 16-pixel alignment for GPU texture efficiency
+        constexpr float CLOD_MIN_SCALE = 1.0f;
+        constexpr float CLOD_MAX_SCALE = 100.0f;
+        constexpr float CLOD_POS_EPS = 1e-4f;
+        constexpr float CLOD_ROT_EPS = 1e-4f;
 
         lfs::training::PPISPRenderOverrides toRenderOverrides(const PPISPOverrides& ov) {
             lfs::training::PPISPRenderOverrides r;
@@ -560,6 +565,12 @@ namespace lfs::vis {
         }
 
         settings_ = new_settings;
+        settings_.clod_virtual_scale = std::clamp(settings_.clod_virtual_scale, CLOD_MIN_SCALE, CLOD_MAX_SCALE);
+        settings_.clod_navigation_scale = std::clamp(settings_.clod_navigation_scale, CLOD_MIN_SCALE, CLOD_MAX_SCALE);
+        settings_.clod_return_speed = std::clamp(settings_.clod_return_speed, 0.1f, 20.0f);
+        if (!settings_.clod_enable || !settings_.clod_auto_scale) {
+            resetClodAutoTracking();
+        }
         markDirty();
     }
 
@@ -687,6 +698,67 @@ namespace lfs::vis {
         return hovered_camera_id_; // Return current value
     }
 
+    void RenderingManager::resetClodAutoTracking() {
+        clod_has_last_camera_ = false;
+        clod_last_update_time_ = std::chrono::steady_clock::time_point{};
+    }
+
+    float RenderingManager::resolveClodVirtualScale(const glm::mat3& rotation, const glm::vec3& translation) {
+        settings_.clod_virtual_scale = std::clamp(settings_.clod_virtual_scale, CLOD_MIN_SCALE, CLOD_MAX_SCALE);
+        settings_.clod_navigation_scale = std::clamp(settings_.clod_navigation_scale, CLOD_MIN_SCALE, CLOD_MAX_SCALE);
+        settings_.clod_return_speed = std::clamp(settings_.clod_return_speed, 0.1f, 20.0f);
+
+        if (!settings_.clod_enable) {
+            resetClodAutoTracking();
+            return settings_.clod_virtual_scale;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+
+        if (!settings_.clod_auto_scale) {
+            clod_last_rotation_ = rotation;
+            clod_last_translation_ = translation;
+            clod_last_update_time_ = now;
+            clod_has_last_camera_ = true;
+            return settings_.clod_virtual_scale;
+        }
+
+        bool moving = !clod_has_last_camera_;
+        if (clod_has_last_camera_) {
+            const float translation_delta = glm::length(translation - clod_last_translation_);
+            float max_rotation_delta = 0.0f;
+            for (int col = 0; col < 3; ++col) {
+                for (int row = 0; row < 3; ++row) {
+                    max_rotation_delta = std::max(max_rotation_delta, std::abs(rotation[col][row] - clod_last_rotation_[col][row]));
+                }
+            }
+            moving = translation_delta > CLOD_POS_EPS || max_rotation_delta > CLOD_ROT_EPS;
+        }
+
+        float effective_scale = settings_.clod_virtual_scale;
+        if (moving) {
+            effective_scale = settings_.clod_navigation_scale;
+        } else {
+            float dt = 0.0f;
+            if (clod_last_update_time_ != std::chrono::steady_clock::time_point{}) {
+                dt = std::chrono::duration<float>(now - clod_last_update_time_).count();
+            }
+            dt = std::clamp(dt, 0.0f, 1.0f);
+            const float alpha = 1.0f - std::exp(-settings_.clod_return_speed * dt);
+            effective_scale += (CLOD_MIN_SCALE - effective_scale) * alpha;
+        }
+
+        settings_.clod_virtual_scale = std::clamp(effective_scale, CLOD_MIN_SCALE, CLOD_MAX_SCALE);
+        if (!moving && std::abs(settings_.clod_virtual_scale - CLOD_MIN_SCALE) > 1e-3f) {
+            needs_render_.store(true);
+        }
+        clod_last_rotation_ = rotation;
+        clod_last_translation_ = translation;
+        clod_last_update_time_ = now;
+        clod_has_last_camera_ = true;
+        return settings_.clod_virtual_scale;
+    }
+
     void RenderingManager::renderToTexture(const RenderContext& context, SceneManager* scene_manager, const lfs::core::SplatData* model) {
         LOG_TIMER_TRACE("RenderingManager::renderToTexture");
         if (!model || model->size() == 0) {
@@ -765,6 +837,7 @@ namespace lfs::vis {
             .focal_length_mm = settings_.focal_length_mm,
             .orthographic = settings_.orthographic,
             .ortho_scale = settings_.ortho_scale};
+        const float clod_virtual_scale = resolveClodVirtualScale(viewport_data.rotation, viewport_data.translation);
 
         // Build render state from scene (single source of truth)
         lfs::vis::SceneRenderState scene_state;
@@ -784,6 +857,8 @@ namespace lfs::vis {
             .voxel_size = settings_.voxel_size,
             .gut = settings_.gut,
             .equirectangular = settings_.equirectangular,
+            .clod_enable = settings_.clod_enable,
+            .clod_virtual_scale = clod_virtual_scale,
             .show_rings = settings_.show_rings,
             .ring_width = settings_.ring_width,
             .show_center_markers = settings_.show_center_markers,
@@ -926,6 +1001,9 @@ namespace lfs::vis {
 
         if (render_result) {
             cached_result_ = *render_result;
+            clod_rendered_gaussians_.store(static_cast<int64_t>(render_result->rendered_gaussians));
+            clod_total_gaussians_.store(static_cast<int64_t>(render_result->total_gaussians));
+            clod_active_.store(render_result->clod_active);
 
             // Copy packed depth+id back and extract gaussian ID
             if (need_hovered_output) {
@@ -952,6 +1030,9 @@ namespace lfs::vis {
             LOG_ERROR("Failed to render gaussians: {}", render_result.error());
             render_texture_valid_ = false;
             cached_result_size_ = {0, 0};
+            clod_rendered_gaussians_.store(0);
+            clod_total_gaussians_.store(0);
+            clod_active_.store(false);
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, current_fbo);
@@ -977,6 +1058,8 @@ namespace lfs::vis {
         glClearColor(bg.r, bg.g, bg.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        const float clod_virtual_scale = resolveClodVirtualScale(rotation, position);
+
         const lfs::rendering::RenderRequest request{
             .viewport = {rotation, position, {width, height}, fov, false, 1.0f},
             .scaling_modifier = settings_.scaling_modifier,
@@ -987,6 +1070,8 @@ namespace lfs::vis {
             .point_cloud_mode = settings_.point_cloud_mode,
             .voxel_size = settings_.voxel_size,
             .gut = false,
+            .clod_enable = settings_.clod_enable,
+            .clod_virtual_scale = clod_virtual_scale,
             .show_rings = false,
             .ring_width = 0.0f,
             .show_center_markers = false};
@@ -1212,9 +1297,15 @@ namespace lfs::vis {
                 cached_result_ = *result;
                 // Store viewport size for coordinate calculations in getDepthAtPixel
                 cached_result_size_ = render_size;
+                clod_rendered_gaussians_.store(0);
+                clod_total_gaussians_.store(0);
+                clod_active_.store(false);
             } else {
                 LOG_ERROR("Failed to render split view: {}", result.error());
                 cached_result_size_ = {0, 0};
+                clod_rendered_gaussians_.store(0);
+                clod_total_gaussians_.store(0);
+                clod_active_.store(false);
             }
 
             renderOverlays(context);
@@ -1404,6 +1495,9 @@ namespace lfs::vis {
                 auto render_result = engine_->renderPointCloud(*scene_state.point_cloud, pc_request);
                 if (render_result) {
                     cached_result_ = *render_result;
+                    clod_rendered_gaussians_.store(0);
+                    clod_total_gaussians_.store(0);
+                    clod_active_.store(false);
 
                     glm::ivec2 actual_image_size(0, 0);
                     if (cached_result_.image) {
@@ -1428,6 +1522,9 @@ namespace lfs::vis {
                     }
                 } else {
                     LOG_ERROR("Failed to render point cloud: {}", render_result.error());
+                    clod_rendered_gaussians_.store(0);
+                    clod_total_gaussians_.store(0);
+                    clod_active_.store(false);
                 }
             }
         }

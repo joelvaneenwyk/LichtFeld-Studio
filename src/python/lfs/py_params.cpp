@@ -219,6 +219,31 @@ namespace lfs::python {
             .float_prop(&OptimizationParameters::init_rho,
                         "init_rho", "Init Rho", 0.001f, 0.0f, 0.01f,
                         "Initial rho for sparsity optimization")
+            // CLoD-GS
+            .bool_prop(&OptimizationParameters::clod_enable,
+                       "clod_enable", "Enable CLoD", false,
+                       "Enable CLoD-GS virtual distance training")
+            .float_prop(&OptimizationParameters::clod_max_virtual_scale,
+                        "clod_max_virtual_scale", "CLoD Max Scale", 5.0f, 1.0f, 20.0f,
+                        "Maximum virtual distance scale sampled during training")
+            .float_prop(&OptimizationParameters::clod_tau,
+                        "clod_tau", "CLoD Tau", 0.005f, 0.0f, 1.0f,
+                        "Base opacity threshold for CLoD filtering")
+            .float_prop(&OptimizationParameters::clod_lambda_reg,
+                        "clod_lambda_reg", "CLoD Lambda", 1.0f, 0.0f, 100.0f,
+                        "Weight for CLoD regularization loss")
+            .float_prop(&OptimizationParameters::clod_sigma_lr,
+                        "clod_sigma_lr", "CLoD Sigma LR", 1e-2f, 0.0f, 1.0f,
+                        "Learning rate for CLoD sigma_d parameter")
+            .size_prop(&OptimizationParameters::clod_start_iter,
+                       "clod_start_iter", "CLoD Start", 5000, 0, 200000,
+                       "Iteration to enable CLoD behavior")
+            .float_prop(&OptimizationParameters::clod_eps,
+                        "clod_eps", "CLoD Epsilon", 1e-6f, 1e-12f, 1e-2f,
+                        "Numerical stability epsilon for CLoD attenuation")
+            .bool_prop(&OptimizationParameters::clod_ws_enable,
+                       "clod_ws_enable", "CLoD Use ws", true,
+                       "Enable adaptive ws weighting from CLoD paper")
             .int_prop(&OptimizationParameters::tile_mode,
                       "tile_mode", "Tile Mode", 1, 1, 4,
                       "Tile mode (1, 2, or 4)")
@@ -1127,6 +1152,46 @@ namespace lfs::python {
                 [](PyOptimizationParams& self) { return self.params().undistort; },
                 [](PyOptimizationParams& self, bool v) { self.params().undistort = v; },
                 "Undistort images on-the-fly before training")
+            .def_prop_rw(
+                "clod_enable",
+                [](PyOptimizationParams& self) { return self.params().clod_enable; },
+                [](PyOptimizationParams& self, bool v) { self.params().clod_enable = v; },
+                "Enable CLoD-GS training")
+            .def_prop_rw(
+                "clod_max_virtual_scale",
+                [](PyOptimizationParams& self) { return self.params().clod_max_virtual_scale; },
+                [](PyOptimizationParams& self, float v) { self.params().clod_max_virtual_scale = v; },
+                "Maximum virtual distance scale for CLoD")
+            .def_prop_rw(
+                "clod_tau",
+                [](PyOptimizationParams& self) { return self.params().clod_tau; },
+                [](PyOptimizationParams& self, float v) { self.params().clod_tau = v; },
+                "Base CLoD opacity threshold")
+            .def_prop_rw(
+                "clod_lambda_reg",
+                [](PyOptimizationParams& self) { return self.params().clod_lambda_reg; },
+                [](PyOptimizationParams& self, float v) { self.params().clod_lambda_reg = v; },
+                "Regularization loss weight for CLoD")
+            .def_prop_rw(
+                "clod_sigma_lr",
+                [](PyOptimizationParams& self) { return self.params().clod_sigma_lr; },
+                [](PyOptimizationParams& self, float v) { self.params().clod_sigma_lr = v; },
+                "Learning rate for CLoD sigma_d")
+            .def_prop_rw(
+                "clod_start_iter",
+                [](PyOptimizationParams& self) { return self.params().clod_start_iter; },
+                [](PyOptimizationParams& self, size_t v) { self.params().clod_start_iter = v; },
+                "Iteration at which CLoD becomes active")
+            .def_prop_rw(
+                "clod_eps",
+                [](PyOptimizationParams& self) { return self.params().clod_eps; },
+                [](PyOptimizationParams& self, float v) { self.params().clod_eps = v; },
+                "Numerical epsilon for CLoD attenuation")
+            .def_prop_rw(
+                "clod_ws_enable",
+                [](PyOptimizationParams& self) { return self.params().clod_ws_enable; },
+                [](PyOptimizationParams& self, bool v) { self.params().clod_ws_enable = v; },
+                "Enable adaptive ws weighting in CLoD")
             .def_prop_ro(
                 "save_steps",
                 [](PyOptimizationParams& self) -> std::vector<size_t> {

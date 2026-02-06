@@ -716,6 +716,11 @@ namespace lfs::vis {
                     proxy.split_position = s.split_position;
                     proxy.gut = s.gut;
                     proxy.equirectangular = s.equirectangular;
+                    proxy.clod_enable = s.clod_enable;
+                    proxy.clod_virtual_scale = s.clod_virtual_scale;
+                    proxy.clod_auto_scale = s.clod_auto_scale;
+                    proxy.clod_navigation_scale = s.clod_navigation_scale;
+                    proxy.clod_return_speed = s.clod_return_speed;
                     proxy.orthographic = s.orthographic;
                     proxy.ortho_scale = s.ortho_scale;
                     proxy.selection_color_committed = {s.selection_color_committed.r, s.selection_color_committed.g, s.selection_color_committed.b};
@@ -762,6 +767,11 @@ namespace lfs::vis {
                     s.split_position = proxy.split_position;
                     s.gut = proxy.gut;
                     s.equirectangular = proxy.equirectangular;
+                    s.clod_enable = proxy.clod_enable;
+                    s.clod_virtual_scale = proxy.clod_virtual_scale;
+                    s.clod_auto_scale = proxy.clod_auto_scale;
+                    s.clod_navigation_scale = proxy.clod_navigation_scale;
+                    s.clod_return_speed = proxy.clod_return_speed;
                     s.orthographic = proxy.orthographic;
                     s.ortho_scale = proxy.ortho_scale;
                     s.selection_color_committed = glm::vec3(proxy.selection_color_committed[0], proxy.selection_color_committed[1], proxy.selection_color_committed[2]);

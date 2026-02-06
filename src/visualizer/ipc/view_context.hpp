@@ -68,6 +68,11 @@ namespace lfs::vis {
         float split_position = 0.5f;
         bool gut = false;
         bool equirectangular = false;
+        bool clod_enable = false;
+        float clod_virtual_scale = 1.0f;
+        bool clod_auto_scale = true;
+        float clod_navigation_scale = 20.0f;
+        float clod_return_speed = 3.0f;
         bool orthographic = false;
         float ortho_scale = 100.0f;
         std::array<float, 3> selection_color_committed{0.859f, 0.325f, 0.325f};

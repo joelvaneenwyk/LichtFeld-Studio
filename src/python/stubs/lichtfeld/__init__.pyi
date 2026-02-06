@@ -1450,6 +1450,62 @@ class OptimizationParams:
     def undistort(self, arg: bool, /) -> None: ...
 
     @property
+    def clod_enable(self) -> bool:
+        """Enable CLoD-GS training"""
+
+    @clod_enable.setter
+    def clod_enable(self, arg: bool, /) -> None: ...
+
+    @property
+    def clod_max_virtual_scale(self) -> float:
+        """Maximum virtual distance scale for CLoD"""
+
+    @clod_max_virtual_scale.setter
+    def clod_max_virtual_scale(self, arg: float, /) -> None: ...
+
+    @property
+    def clod_tau(self) -> float:
+        """Base CLoD opacity threshold"""
+
+    @clod_tau.setter
+    def clod_tau(self, arg: float, /) -> None: ...
+
+    @property
+    def clod_lambda_reg(self) -> float:
+        """Regularization loss weight for CLoD"""
+
+    @clod_lambda_reg.setter
+    def clod_lambda_reg(self, arg: float, /) -> None: ...
+
+    @property
+    def clod_sigma_lr(self) -> float:
+        """Learning rate for CLoD sigma_d"""
+
+    @clod_sigma_lr.setter
+    def clod_sigma_lr(self, arg: float, /) -> None: ...
+
+    @property
+    def clod_start_iter(self) -> int:
+        """Iteration at which CLoD becomes active"""
+
+    @clod_start_iter.setter
+    def clod_start_iter(self, arg: int, /) -> None: ...
+
+    @property
+    def clod_eps(self) -> float:
+        """Numerical epsilon for CLoD attenuation"""
+
+    @clod_eps.setter
+    def clod_eps(self, arg: float, /) -> None: ...
+
+    @property
+    def clod_ws_enable(self) -> bool:
+        """Enable adaptive ws weighting in CLoD"""
+
+    @clod_ws_enable.setter
+    def clod_ws_enable(self, arg: bool, /) -> None: ...
+
+    @property
     def save_steps(self) -> list[int]:
         """List of iterations at which to save checkpoints"""
 

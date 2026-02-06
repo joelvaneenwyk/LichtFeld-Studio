@@ -293,6 +293,15 @@ class TrainingPanel(Panel):
             if layout.is_item_hovered():
                 layout.set_tooltip(tr("training.tooltip.gut"))
 
+            layout.same_line()
+            layout.label("CLoD")
+            layout.same_line()
+            changed, new_val = layout.checkbox("##py_clod_enable_inline", params.clod_enable)
+            if changed:
+                params.clod_enable = new_val
+            if layout.is_item_hovered():
+                layout.set_tooltip("Enable CLoD-GS training")
+
             layout.table_next_row()
             layout.table_next_column()
             layout.label(tr("training_params.undistort"))
@@ -521,6 +530,42 @@ class TrainingPanel(Panel):
                     self._input_float_prop_row(layout, tr("training.losses.opacity_reg"), "opacity_reg", params, 0.001, 0.01, "%.4f")
                     self._input_float_prop_row(layout, tr("training.losses.scale_reg"), "scale_reg", params, 0.001, 0.01, "%.4f")
                     self._input_float_prop_row(layout, tr("training.losses.tv_loss_weight"), "tv_loss_weight", params, 1.0, 5.0, "%.1f")
+                    layout.end_disabled()
+            finally:
+                if table_open:
+                    layout.end_table()
+                layout.tree_pop()
+
+        if layout.tree_node("CLoD-GS##py"):
+            table_open = False
+            try:
+                table_open = layout.begin_table("PyClodTable", 2)
+                if table_open:
+                    layout.table_setup_column("Label", 140.0)
+                    layout.table_setup_column("Control", 0.0)
+
+                    layout.begin_disabled(not can_edit)
+                    if params.clod_enable:
+                        self._input_float_row(layout, "Sigma LR", "clod_sigma_lr", params, params.clod_sigma_lr, 0.001, 0.01, "%.4f")
+                        self._input_float_row(layout, "Max Virtual Scale", "clod_max_virtual_scale", params, params.clod_max_virtual_scale, 0.5, 1.0, "%.2f")
+                        self._input_float_row(layout, "Tau", "clod_tau", params, params.clod_tau, 0.001, 0.01, "%.5f")
+                        self._input_float_row(layout, "Lambda Reg", "clod_lambda_reg", params, params.clod_lambda_reg, 0.1, 1.0, "%.3f")
+                        self._input_int_row(layout, "Start Iter", "clod_start_iter", params, 100, 500)
+                        self._input_float_row(layout, "Epsilon", "clod_eps", params, params.clod_eps, 1e-7, 1e-6, "%.7f")
+
+                        layout.table_next_row()
+                        layout.table_next_column()
+                        layout.label("Use ws Weight")
+                        layout.table_next_column()
+                        changed, new_val = layout.checkbox("##py_clod_ws_enable", params.clod_ws_enable)
+                        if changed:
+                            params.clod_ws_enable = new_val
+                    else:
+                        layout.table_next_row()
+                        layout.table_next_column()
+                        layout.label("Status")
+                        layout.table_next_column()
+                        layout.text_colored("Enable CLoD from the GUT row above", COLOR_MUTED)
                     layout.end_disabled()
             finally:
                 if table_open:

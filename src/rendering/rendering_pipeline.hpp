@@ -13,6 +13,7 @@
 #include "rendering/render_constants.hpp"
 #include "rendering/rendering.hpp" // For SelectionMode
 #include "screen_renderer.hpp"
+#include <cstddef>
 #include <glm/glm.hpp>
 #include <optional>
 
@@ -44,6 +45,8 @@ namespace lfs::rendering {
             float voxel_size = 0.01f;
             bool gut = false;
             bool equirectangular = false;
+            bool clod_enable = false;
+            float clod_virtual_scale = 1.0f;
             bool show_rings = false;
             float ring_width = 0.01f;
             bool show_center_markers = false;
@@ -110,6 +113,9 @@ namespace lfs::rendering {
             float near_plane = DEFAULT_NEAR_PLANE;
             float far_plane = DEFAULT_FAR_PLANE;
             bool orthographic = false;
+            size_t rendered_gaussians = 0;
+            size_t total_gaussians = 0;
+            bool clod_active = false;
         };
 
         RenderingPipeline();

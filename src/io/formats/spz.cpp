@@ -74,6 +74,7 @@ namespace lfs::io {
                 std::move(scaling),
                 std::move(rotation),
                 std::move(opacity),
+                Tensor{},
                 SCENE_SCALE);
         }
 

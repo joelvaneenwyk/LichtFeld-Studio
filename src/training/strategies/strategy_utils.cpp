@@ -28,6 +28,7 @@ namespace lfs::training {
             reserve_if_valid(splat_data.scaling_raw());
             reserve_if_valid(splat_data.rotation_raw());
             reserve_if_valid(splat_data.opacity_raw());
+            reserve_if_valid(splat_data.clod_sigma_raw());
         }
     }
 
@@ -50,6 +51,7 @@ namespace lfs::training {
         config.param_lrs["scaling"] = params.scaling_lr;
         config.param_lrs["rotation"] = params.rotation_lr;
         config.param_lrs["opacity"] = params.opacity_lr;
+        config.param_lrs["clod_sigma"] = params.clod_sigma_lr;
 
         // Pre-allocate optimizer state capacity to avoid reallocations during training
         // This dramatically reduces peak memory usage by avoiding double-buffering during growth
@@ -66,6 +68,7 @@ namespace lfs::training {
         LOG_DEBUG("  scaling: {:.2e}", config.param_lrs["scaling"]);
         LOG_DEBUG("  rotation: {:.2e}", config.param_lrs["rotation"]);
         LOG_DEBUG("  opacity: {:.2e}", config.param_lrs["opacity"]);
+        LOG_DEBUG("  clod_sigma: {:.2e}", config.param_lrs["clod_sigma"]);
 
         auto optimizer = std::make_unique<AdamOptimizer>(splat_data, config);
 
@@ -103,6 +106,7 @@ namespace lfs::training {
             case 3: return ParamType::Scaling;
             case 4: return ParamType::Rotation;
             case 5: return ParamType::Opacity;
+            case 6: return ParamType::ClodSigma;
             default:
                 LOG_ERROR("Invalid parameter index: {}", idx);
                 return ParamType::Means;
@@ -111,15 +115,16 @@ namespace lfs::training {
 
         // Get references to all parameters
         // (Gradients are now owned by AdamOptimizer, not SplatData)
-        std::array<lfs::core::Tensor*, 6> params = {
+        std::array<lfs::core::Tensor*, 7> params = {
             &splat_data.means(),
             &splat_data.sh0(),
             &splat_data.shN(),
             &splat_data.scaling_raw(),
             &splat_data.rotation_raw(),
-            &splat_data.opacity_raw()};
+            &splat_data.opacity_raw(),
+            &splat_data.clod_sigma_raw()};
 
-        std::array<lfs::core::Tensor, 6> new_params;
+        std::array<lfs::core::Tensor, 7> new_params;
 
         // First pass: Compute new parameters and update optimizer state
         for (auto i : param_idxs) {
@@ -163,6 +168,8 @@ namespace lfs::training {
                 splat_data.rotation_raw() = new_params[i];
             } else if (i == 5) {
                 splat_data.opacity_raw() = new_params[i];
+            } else if (i == 6) {
+                splat_data.clod_sigma_raw() = new_params[i];
             }
         }
     }

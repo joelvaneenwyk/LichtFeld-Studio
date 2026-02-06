@@ -15,6 +15,9 @@ namespace lfs::rendering {
 
     namespace {
         constexpr int GPU_ALIGNMENT = 16; // 16-pixel alignment for GPU texture efficiency
+        constexpr float CLOD_DEFAULT_TAU = 0.005f;
+        constexpr float CLOD_DEFAULT_EPS = 1e-6f;
+        constexpr float CLOD_LOGIT_EPS = 1e-7f;
     }
 
     RenderingPipeline::RenderingPipeline()
@@ -126,6 +129,74 @@ namespace lfs::rendering {
             }
         }
 
+        lfs::core::SplatData& mutable_model = const_cast<lfs::core::SplatData&>(model);
+        Tensor clod_opacity_raw_override;
+        Tensor clod_deleted_mask;
+        const Tensor* effective_deleted_mask = request.deleted_mask;
+        const Tensor* opacity_raw_override = nullptr;
+        const size_t total_gaussians = static_cast<size_t>(mutable_model.size());
+        size_t rendered_gaussians = total_gaussians;
+        bool clod_active = false;
+
+        if (request.clod_enable &&
+            !request.gut &&
+            !request.equirectangular &&
+            total_gaussians > 0 &&
+            mutable_model.clod_sigma_raw().is_valid() &&
+            mutable_model.clod_sigma_raw().numel() > 0) {
+            Tensor existing_deleted_mask;
+            if (request.deleted_mask && request.deleted_mask->is_valid() && request.deleted_mask->numel() > 0) {
+                existing_deleted_mask = request.deleted_mask->is_contiguous() ? *request.deleted_mask : request.deleted_mask->contiguous();
+                if (existing_deleted_mask.device() != lfs::core::Device::CUDA) {
+                    existing_deleted_mask = existing_deleted_mask.cuda();
+                }
+            } else if (mutable_model.has_deleted_mask() && mutable_model.deleted().is_valid() && mutable_model.deleted().numel() > 0) {
+                existing_deleted_mask = mutable_model.deleted().is_contiguous() ? mutable_model.deleted() : mutable_model.deleted().contiguous();
+                if (existing_deleted_mask.device() != lfs::core::Device::CUDA) {
+                    existing_deleted_mask = existing_deleted_mask.cuda();
+                }
+            }
+
+            Tensor base_opacity = mutable_model.get_opacity().contiguous(); // [N] or [N,1]
+            if (base_opacity.ndim() == 2 && base_opacity.shape()[1] == 1) {
+                base_opacity = base_opacity.squeeze(-1);
+            }
+
+            Tensor sigma_raw = mutable_model.clod_sigma_raw().contiguous();
+            if (sigma_raw.ndim() == 2 && sigma_raw.shape()[1] == 1) {
+                sigma_raw = sigma_raw.squeeze(-1);
+            }
+            const Tensor sigma = sigma_raw.relu();
+
+            const Tensor means = mutable_model.get_means().contiguous();
+            const Tensor cam_pos = cam.cam_position().contiguous();
+            const Tensor distances = (means - cam_pos.unsqueeze(0)).norm(2, -1, true).squeeze(-1);
+            const Tensor max_distance = distances.max().clamp_min(CLOD_DEFAULT_EPS);
+            const Tensor normalized_distance = distances / max_distance;
+            const Tensor dist_scaled_sq = (normalized_distance * request.clod_virtual_scale).square();
+            const Tensor denom = sigma.square() * 2.0f + CLOD_DEFAULT_EPS;
+            const Tensor attenuation = dist_scaled_sq.neg().div(denom).exp();
+
+            const Tensor attenuated_opacity = base_opacity * attenuation;
+            const Tensor mask = attenuated_opacity.gt(CLOD_DEFAULT_TAU * request.clod_virtual_scale);
+            const Tensor mask_f = mask.to(lfs::core::DataType::Float32);
+            const Tensor effective_opacity =
+                (attenuated_opacity * mask_f).clamp(CLOD_LOGIT_EPS, 1.0f - CLOD_LOGIT_EPS);
+
+            clod_opacity_raw_override = effective_opacity.logit(CLOD_LOGIT_EPS).unsqueeze(-1).contiguous();
+            opacity_raw_override = &clod_opacity_raw_override;
+
+            const Tensor clod_culled_mask = mask.logical_not().contiguous();
+            clod_deleted_mask = (existing_deleted_mask.is_valid() && existing_deleted_mask.numel() > 0)
+                                    ? existing_deleted_mask.logical_or(clod_culled_mask)
+                                    : clod_culled_mask;
+            effective_deleted_mask = &clod_deleted_mask;
+
+            rendered_gaussians = total_gaussians -
+                                 static_cast<size_t>(clod_deleted_mask.to(lfs::core::DataType::Float32).sum_scalar());
+            clod_active = true;
+        }
+
         try {
             if (request.sh_degree != model.get_active_sh_degree()) {
                 // Temporarily set sh_degree for rendering, then immediately restore
@@ -162,7 +233,7 @@ namespace lfs::rendering {
                                                            request.ellipsoid_transform, request.ellipsoid_radii,
                                                            request.ellipsoid_inverse, request.ellipsoid_desaturate, request.ellipsoid_parent_node_index,
                                                            request.depth_filter_transform, request.depth_filter_min, request.depth_filter_max,
-                                                           request.deleted_mask,
+                                                           effective_deleted_mask,
                                                            request.hovered_depth_id,
                                                            request.highlight_gaussian_id,
                                                            request.far_plane,
@@ -172,7 +243,8 @@ namespace lfs::rendering {
                                                            request.selection_flash_intensity,
                                                            request.orthographic,
                                                            request.ortho_scale,
-                                                           request.mip_filter);
+                                                           request.mip_filter,
+                                                           opacity_raw_override);
                     result.image = std::move(image);
                     result.depth = std::move(depth);
                     if (request.output_screen_positions) {
@@ -186,12 +258,14 @@ namespace lfs::rendering {
                 result.valid = true;
                 result.orthographic = request.orthographic;
                 result.far_plane = request.far_plane;
+                result.clod_active = clod_active;
+                result.total_gaussians = total_gaussians;
+                result.rendered_gaussians = clod_active ? rendered_gaussians : total_gaussians;
                 LOG_TRACE("Rasterization completed successfully (sh_degree restored to {})", original_sh_degree);
                 return result;
             }
 
             // No sh_degree change needed - safe to use model as-is
-            lfs::core::SplatData& mutable_model = const_cast<lfs::core::SplatData&>(model);
             RenderResult result;
 
             if (request.gut || request.equirectangular) {
@@ -206,7 +280,10 @@ namespace lfs::rendering {
                     .depth = std::move(render_output.depth),
                     .valid = true,
                     .far_plane = request.far_plane,
-                    .orthographic = request.orthographic};
+                    .orthographic = request.orthographic,
+                    .rendered_gaussians = total_gaussians,
+                    .total_gaussians = total_gaussians,
+                    .clod_active = false};
             }
 
             // Use libtorch-free tensor-based rasterizer
@@ -226,7 +303,7 @@ namespace lfs::rendering {
                                                    request.ellipsoid_transform, request.ellipsoid_radii,
                                                    request.ellipsoid_inverse, request.ellipsoid_desaturate, request.ellipsoid_parent_node_index,
                                                    request.depth_filter_transform, request.depth_filter_min, request.depth_filter_max,
-                                                   request.deleted_mask,
+                                                   effective_deleted_mask,
                                                    request.hovered_depth_id,
                                                    request.highlight_gaussian_id,
                                                    request.far_plane,
@@ -236,7 +313,8 @@ namespace lfs::rendering {
                                                    request.selection_flash_intensity,
                                                    request.orthographic,
                                                    request.ortho_scale,
-                                                   request.mip_filter);
+                                                   request.mip_filter,
+                                                   opacity_raw_override);
             result.image = std::move(image);
             result.depth = std::move(depth);
             if (request.output_screen_positions) {
@@ -245,6 +323,9 @@ namespace lfs::rendering {
             result.valid = true;
             result.orthographic = request.orthographic;
             result.far_plane = request.far_plane;
+            result.clod_active = clod_active;
+            result.total_gaussians = total_gaussians;
+            result.rendered_gaussians = clod_active ? rendered_gaussians : total_gaussians;
 
             LOG_TRACE("Rasterization completed successfully");
             return result;

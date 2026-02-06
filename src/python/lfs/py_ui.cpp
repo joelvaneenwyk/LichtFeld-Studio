@@ -43,6 +43,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <future>
 #include <implot.h>
@@ -4307,6 +4308,16 @@ namespace lfs::python {
                 return rm->getAverageFPS();
             },
             "Get current FPS");
+
+        m.def(
+            "get_clod_render_stats", []() -> std::tuple<int64_t, int64_t, bool> {
+                auto* rm = get_rendering_manager();
+                if (!rm) {
+                    return {0, 0, false};
+                }
+                return rm->getClodRenderStats();
+            },
+            "Get CLoD render stats as (rendered_gaussians, total_gaussians, clod_active)");
 
         m.def(
             "get_gpu_memory", []() -> std::tuple<size_t, size_t> {

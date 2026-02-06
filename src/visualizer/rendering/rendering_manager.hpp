@@ -10,12 +10,14 @@
 #include "io/nvcodec_image_loader.hpp"
 #include "rendering/cuda_gl_interop.hpp"
 #include "rendering/rendering.hpp"
+#include <cstdint>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <tuple>
 #include <unordered_map>
 
 namespace lfs::vis {
@@ -131,6 +133,11 @@ namespace lfs::vis {
 
         bool gut = false;
         bool equirectangular = false;
+        bool clod_enable = false;
+        float clod_virtual_scale = 1.0f;
+        bool clod_auto_scale = true;
+        float clod_navigation_scale = 20.0f; // Scale while camera is moving
+        float clod_return_speed = 3.0f;      // 1/s decay speed toward 1.0 when idle
         bool orthographic = false;
         float ortho_scale = 100.0f; // Pixels per world unit (larger = more zoomed in)
 
@@ -324,6 +331,9 @@ namespace lfs::vis {
         // FPS monitoring
         float getCurrentFPS() const { return framerate_controller_.getCurrentFPS(); }
         float getAverageFPS() const { return framerate_controller_.getAverageFPS(); }
+        [[nodiscard]] std::tuple<int64_t, int64_t, bool> getClodRenderStats() const {
+            return {clod_rendered_gaussians_.load(), clod_total_gaussians_.load(), clod_active_.load()};
+        }
 
         // Access to rendering engine (for initialization only)
         lfs::rendering::RenderingEngine* getRenderingEngine();
@@ -433,6 +443,8 @@ namespace lfs::vis {
     private:
         void doFullRender(const RenderContext& context, SceneManager* scene_manager, const lfs::core::SplatData* model);
         void renderOverlays(const RenderContext& context);
+        float resolveClodVirtualScale(const glm::mat3& rotation, const glm::vec3& translation);
+        void resetClodAutoTracking();
         void setupEventHandlers();
         void renderToTexture(const RenderContext& context, SceneManager* scene_manager, const lfs::core::SplatData* model);
 
@@ -538,6 +550,13 @@ namespace lfs::vis {
         // Viewport state
         glm::ivec2 last_viewport_size_{0, 0}; // Last requested viewport size
         glm::ivec2 cached_result_size_{0, 0}; // Size at which cached_result_ was actually rendered
+        std::atomic<int64_t> clod_rendered_gaussians_{0};
+        std::atomic<int64_t> clod_total_gaussians_{0};
+        std::atomic<bool> clod_active_{false};
+        std::chrono::steady_clock::time_point clod_last_update_time_;
+        glm::mat3 clod_last_rotation_{1.0f};
+        glm::vec3 clod_last_translation_{0.0f};
+        bool clod_has_last_camera_ = false;
 
         std::optional<GTComparisonContext> gt_context_;
         int gt_context_camera_id_ = -1;

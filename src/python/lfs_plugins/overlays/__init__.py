@@ -5,6 +5,7 @@ from .drag_drop import DragDropOverlay
 from .export_progress import ExportProgressOverlay
 from .import_progress import ImportProgressOverlay
 from .video_progress import VideoProgressOverlay
+from .clod_stats import ClodStatsOverlay
 
 
 def register():
@@ -15,6 +16,7 @@ def register():
     lf.register_class(ExportProgressOverlay)
     lf.register_class(ImportProgressOverlay)
     lf.register_class(VideoProgressOverlay)
+    lf.register_class(ClodStatsOverlay)
 
 
 def unregister():

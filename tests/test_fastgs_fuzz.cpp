@@ -95,7 +95,7 @@ TEST_F(FastGSFuzzTest, EmptyScene_ZeroPrimitives) {
     auto opacity = Tensor::zeros({0}, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     // Should handle gracefully - either return nullopt or valid empty result
@@ -115,7 +115,7 @@ TEST_F(FastGSFuzzTest, SingleGaussian_Visible) {
     auto opacity = Tensor::full({1}, 2.0f, Device::CUDA); // sigmoid(2) ~ 0.88
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -135,7 +135,7 @@ TEST_F(FastGSFuzzTest, SingleGaussian_VeryFarAway) {
     auto opacity = Tensor::full({1}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -164,7 +164,7 @@ TEST_F(FastGSFuzzTest, AllGaussians_OutsideFrustum) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -186,7 +186,7 @@ TEST_F(FastGSFuzzTest, VerySmallScale) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -205,7 +205,7 @@ TEST_F(FastGSFuzzTest, VeryLargeScale) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -245,7 +245,7 @@ TEST_F(FastGSFuzzTest, ExtremePositions) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -264,7 +264,7 @@ TEST_F(FastGSFuzzTest, ZeroOpacity) {
     auto opacity = Tensor::full({n}, -100.0f, Device::CUDA); // sigmoid(-100) ~ 0
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -284,7 +284,7 @@ TEST_F(FastGSFuzzTest, FullOpacity) {
     auto opacity = Tensor::full({n}, 100.0f, Device::CUDA); // sigmoid(100) ~ 1
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -306,7 +306,7 @@ TEST_F(FastGSFuzzTest, ZeroQuaternion) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -329,7 +329,7 @@ TEST_F(FastGSFuzzTest, DenormalizedQuaternion) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -366,7 +366,7 @@ TEST_F(FastGSFuzzTest, MixedValidInvalid) {
     opacity = opa_cpu.to(Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -403,7 +403,7 @@ TEST_F(FastGSFuzzTest, GaussianAtTileBoundary) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -422,7 +422,7 @@ TEST_F(FastGSFuzzTest, LargeGaussianCoveringManyTiles) {
     auto opacity = Tensor::full({1}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(128, 128, 100, 100, 64, 64);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -442,7 +442,7 @@ TEST_F(FastGSFuzzTest, ManyGaussiansPerTile) {
     auto opacity = Tensor::full({n}, 1.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -462,7 +462,7 @@ TEST_F(FastGSFuzzTest, OddImageDimensions) {
 
     // Odd dimensions that don't align with tile size
     auto camera = make_camera(63, 67, 100, 100, 31.5f, 33.5f);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -483,7 +483,7 @@ TEST_F(FastGSFuzzTest, VerySmallImage) {
 
     // Smaller than a tile
     auto camera = make_camera(8, 8, 10, 10, 4, 4);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -501,7 +501,7 @@ TEST_F(FastGSFuzzTest, SinglePixelImage) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(1, 1, 1, 1, 0.5f, 0.5f);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -523,7 +523,7 @@ TEST_F(FastGSFuzzTest, Backward_ZeroGradient) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -555,7 +555,7 @@ TEST_F(FastGSFuzzTest, Backward_LargeGradient) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -589,7 +589,7 @@ TEST_F(FastGSFuzzTest, Backward_AllCulled) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -628,7 +628,7 @@ TEST_F(FastGSFuzzTest, RandomStress_SmallBatch) {
         int w = 32 + (gen() % 64);
         int h = 32 + (gen() % 64);
         auto camera = make_camera(w, h, 50 + gen() % 100, 50 + gen() % 100, w / 2.0f, h / 2.0f);
-        auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+        auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
         auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
         ASSERT_TRUE(result.has_value()) << "Trial " << trial << " failed";
@@ -667,7 +667,7 @@ TEST_F(FastGSFuzzTest, RandomStress_LargeBatch) {
         auto opacity = Tensor::randn({n}, Device::CUDA).mul(2.0f);
 
         auto camera = make_camera(256, 256, 200, 200, 128, 128);
-        auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+        auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
         auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
         ASSERT_TRUE(result.has_value()) << "Large trial " << trial << " failed";
@@ -693,7 +693,7 @@ TEST_F(FastGSFuzzTest, MipFilter_Enabled) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     // Test with mip filter enabled
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, true);
@@ -736,7 +736,7 @@ TEST_F(FastGSFuzzTest, SameDepthAllGaussians) {
     auto opacity = Tensor::full({n}, 1.5f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -765,7 +765,7 @@ TEST_F(FastGSFuzzTest, AtNearPlane) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -787,7 +787,7 @@ TEST_F(FastGSFuzzTest, HigherOrderSH) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -818,7 +818,7 @@ TEST_F(FastGSFuzzTest, ExtremeSHCoefficients) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -842,7 +842,7 @@ TEST_F(FastGSFuzzTest, AsymmetricFocalLength) {
 
     // Very asymmetric focal length
     auto camera = make_camera(64, 64, 50, 200, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -861,7 +861,7 @@ TEST_F(FastGSFuzzTest, OffCenterPrincipalPoint) {
 
     // Principal point at corner
     auto camera = make_camera(64, 64, 100, 100, 5, 60);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -880,7 +880,7 @@ TEST_F(FastGSFuzzTest, VerySmallFocalLength) {
 
     // Very small focal length (wide FOV)
     auto camera = make_camera(64, 64, 10, 10, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -899,7 +899,7 @@ TEST_F(FastGSFuzzTest, VeryLargeFocalLength) {
 
     // Very large focal length (narrow FOV / telephoto)
     auto camera = make_camera(64, 64, 10000, 10000, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -922,7 +922,7 @@ TEST_F(FastGSFuzzTest, TransmittanceSaturation) {
     auto opacity = Tensor::full({n}, 5.0f, Device::CUDA); // High opacity
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -956,7 +956,7 @@ TEST_F(FastGSFuzzTest, NaN_InMeans) {
     means = means_cpu.to(Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -982,7 +982,7 @@ TEST_F(FastGSFuzzTest, Inf_InScaling) {
     scaling = scaling_cpu.to(Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -1006,7 +1006,7 @@ TEST_F(FastGSFuzzTest, NaN_InRotation) {
     rotation = rot_cpu.to(Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -1028,7 +1028,7 @@ TEST_F(FastGSFuzzTest, VeryLargeBatch_100k) {
     auto opacity = Tensor::randn({n}, Device::CUDA);
 
     auto camera = make_camera(512, 512, 500, 500, 256, 256);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -1056,7 +1056,7 @@ TEST_F(FastGSFuzzTest, DenormalizedFloats) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -1079,7 +1079,7 @@ TEST_F(FastGSFuzzTest, MaxFloatValues) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -1106,7 +1106,7 @@ TEST_F(FastGSFuzzTest, AllGaussiansInSinglePixel) {
     auto opacity = Tensor::full({n}, 0.5f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());
@@ -1128,7 +1128,7 @@ TEST_F(FastGSFuzzTest, GradientStability_MultipleIterations) {
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
 
     for (int iter = 0; iter < 5; ++iter) {
-        auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+        auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
         auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
         ASSERT_TRUE(result.has_value()) << "Iteration " << iter;
@@ -1169,7 +1169,7 @@ TEST_F(FastGSFuzzTest, AnisotropicGaussians) {
     auto opacity = Tensor::full({n}, 2.0f, Device::CUDA);
 
     auto camera = make_camera(64, 64, 100, 100, 32, 32);
-    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 
     auto result = fast_rasterize_forward(camera, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(result.has_value());

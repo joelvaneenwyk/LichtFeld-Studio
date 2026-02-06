@@ -23,7 +23,7 @@ namespace {
         auto rotation = Tensor::randn({n_points, 4}, Device::CUDA);
         auto opacity = Tensor::randn({n_points, 1}, Device::CUDA);
 
-        SplatData splat_data(3, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+        SplatData splat_data(3, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
         // Note: gradients are allocated by AdamOptimizer, not SplatData
         return splat_data;
     }

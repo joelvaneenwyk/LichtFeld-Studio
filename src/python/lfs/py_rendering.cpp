@@ -178,6 +178,15 @@ namespace lfs::python {
         add_bool(&Proxy::equirectangular, "equirectangular", "Equirectangular", "Equirectangular projection mode",
                  false);
         add_bool(&Proxy::gut, "gut", "GUT Mode", "Enable GUT rendering mode", false);
+        add_bool(&Proxy::clod_enable, "clod_enable", "Enable CLoD", "Enable runtime CLoD opacity attenuation", false);
+        add_float(&Proxy::clod_virtual_scale, "clod_virtual_scale", "CLoD Scale",
+                  "Virtual distance scale for CLoD rendering", 1.0, 1.0, 100.0);
+        add_bool(&Proxy::clod_auto_scale, "clod_auto_scale", "Auto CLoD Scale",
+                 "Use high CLoD scale while navigating and decay to 1.0 when idle", true);
+        add_float(&Proxy::clod_navigation_scale, "clod_navigation_scale", "CLoD Navigation Scale",
+                  "CLoD scale to use while camera is moving", 20.0, 1.0, 100.0);
+        add_float(&Proxy::clod_return_speed, "clod_return_speed", "CLoD Return Speed",
+                  "How quickly CLoD scale decays to 1.0 when camera is idle (1/s)", 3.0, 0.1, 20.0);
         add_bool(&Proxy::mip_filter, "mip_filter", "Mip Filter", "Enable mip-map filtering", false);
         add_float(&Proxy::render_scale, "render_scale", "Render Scale", "Render resolution scale", 1.0, 0.25, 1.0);
 

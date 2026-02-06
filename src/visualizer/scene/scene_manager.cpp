@@ -2793,7 +2793,7 @@ namespace lfs::vis {
             auto cloned = std::make_unique<lfs::core::SplatData>(
                 src.get_max_sh_degree(),
                 src.means_raw().clone(), src.sh0_raw().clone(), src.shN_raw().clone(),
-                src.scaling_raw().clone(), src.rotation_raw().clone(), src.opacity_raw().clone(),
+                src.scaling_raw().clone(), src.rotation_raw().clone(), src.opacity_raw().clone(), src.clod_sigma_raw().clone(),
                 src.get_scene_scale());
             cloned->set_active_sh_degree(src.get_active_sh_degree());
 
@@ -2855,6 +2855,7 @@ namespace lfs::vis {
             src.scaling_raw().index_select(0, indices).contiguous(),
             src.rotation_raw().index_select(0, indices).contiguous(),
             src.opacity_raw().index_select(0, indices).contiguous(),
+            src.clod_sigma_raw().index_select(0, indices).contiguous(),
             src.get_scene_scale());
         gaussian_clipboard_->set_active_sh_degree(src.get_active_sh_degree());
 
@@ -2870,7 +2871,7 @@ namespace lfs::vis {
         auto data = std::make_unique<lfs::core::SplatData>(
             src.get_max_sh_degree(),
             src.means_raw().clone(), src.sh0_raw().clone(), src.shN_raw().clone(),
-            src.scaling_raw().clone(), src.rotation_raw().clone(), src.opacity_raw().clone(),
+            src.scaling_raw().clone(), src.rotation_raw().clone(), src.opacity_raw().clone(), src.clod_sigma_raw().clone(),
             src.get_scene_scale());
         data->set_active_sh_degree(src.get_active_sh_degree());
 
@@ -2967,7 +2968,7 @@ namespace lfs::vis {
             auto paste_data = std::make_unique<lfs::core::SplatData>(
                 entry.data->get_max_sh_degree(),
                 entry.data->means_raw().clone(), entry.data->sh0_raw().clone(), entry.data->shN_raw().clone(),
-                entry.data->scaling_raw().clone(), entry.data->rotation_raw().clone(), entry.data->opacity_raw().clone(),
+                entry.data->scaling_raw().clone(), entry.data->rotation_raw().clone(), entry.data->opacity_raw().clone(), entry.data->clod_sigma_raw().clone(),
                 entry.data->get_scene_scale());
             paste_data->set_active_sh_degree(entry.data->get_active_sh_degree());
 

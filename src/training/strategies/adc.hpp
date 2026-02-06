@@ -91,6 +91,7 @@ namespace lfs::training {
             const lfs::core::Tensor& sh0,
             const lfs::core::Tensor& shN,
             const lfs::core::Tensor& opacities,
+            const lfs::core::Tensor& clod_sigma,
             int64_t count);
 
         // Mark slots as free (for soft deletion)

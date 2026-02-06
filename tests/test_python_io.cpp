@@ -86,7 +86,7 @@ protected:
             std::move(scaling),
             std::move(rotation),
             std::move(opacity),
-            1.0f);
+            Tensor{}, 1.0f);
     }
 };
 

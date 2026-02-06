@@ -84,7 +84,7 @@ protected:
         rotation_ = Tensor::randn({n_, 4}, Device::CUDA);
         rotation_ = rotation_ / rotation_.pow(2.0f).sum(-1, true).sqrt();
         opacity_ = Tensor::randn({n_}, Device::CUDA).mul(2.0f);
-        splat_ = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, 1.0f);
+        splat_ = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, Tensor{}, 1.0f);
     }
 
     std::unique_ptr<AdamOptimizer> make_optimizer() {
@@ -256,7 +256,7 @@ TEST_F(FastGSKernelTest, EdgeCase_SingleGaussian) {
     rotation_ = Tensor::zeros({1, 4}, Device::CUDA);
     rotation_.slice(1, 0, 1).fill_(1.0f);
     opacity_ = Tensor::zeros({1}, Device::CUDA);
-    splat_ = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, 1.0f);
+    splat_ = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, Tensor{}, 1.0f);
 
     auto r = forward();
     ASSERT_TRUE(r.has_value());
@@ -264,7 +264,7 @@ TEST_F(FastGSKernelTest, EdgeCase_SingleGaussian) {
 
 TEST_F(FastGSKernelTest, EdgeCase_LargeGaussians) {
     scaling_.fill_(2.0f);
-    splat_ = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, 1.0f);
+    splat_ = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, Tensor{}, 1.0f);
 
     auto r = forward();
     ASSERT_TRUE(r.has_value());
@@ -395,7 +395,7 @@ protected:
 
     float compute_loss(const Tensor& means, const Tensor& scaling, const Tensor& rotation,
                        const Tensor& opacity, const Tensor& sh0) {
-        auto splat = std::make_unique<SplatData>(0, means, sh0, shN_, scaling, rotation, opacity, 1.0f);
+        auto splat = std::make_unique<SplatData>(0, means, sh0, shN_, scaling, rotation, opacity, Tensor{}, 1.0f);
         auto r = fast_rasterize_forward(*camera_, *splat, bg_, 0, 0, 0, 0, false);
         if (!r)
             return 0.0f;
@@ -450,7 +450,7 @@ protected:
     }
 
     Tensor analytical_grad(ParamType param) {
-        auto splat = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, 1.0f);
+        auto splat = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, Tensor{}, 1.0f);
         auto r = fast_rasterize_forward(*camera_, *splat, bg_, 0, 0, 0, 0, false);
         if (!r)
             return {};
@@ -558,7 +558,7 @@ TEST_F(FastGSGradientTest, Numerical_Sh0) {
 
 TEST_F(FastGSGradientTest, GradientDirection) {
     // Verify gradient descent decreases loss
-    auto splat = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, Tensor{}, 1.0f);
     auto r = fast_rasterize_forward(*camera_, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(r.has_value());
 
@@ -632,7 +632,7 @@ protected:
 
     float compute_loss(const Tensor& means, const Tensor& scaling, const Tensor& rotation,
                        const Tensor& opacity, const Tensor& sh0) {
-        auto splat = std::make_unique<SplatData>(0, means, sh0, shN_, scaling, rotation, opacity, 1.0f);
+        auto splat = std::make_unique<SplatData>(0, means, sh0, shN_, scaling, rotation, opacity, Tensor{}, 1.0f);
         auto r = fast_rasterize_forward(*camera_, *splat, bg_, 0, 0, 0, 0, false);
         if (!r)
             return 0.0f;
@@ -683,7 +683,7 @@ protected:
     }
 
     Tensor analytical_grad(ParamType param) {
-        auto splat = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, 1.0f);
+        auto splat = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, Tensor{}, 1.0f);
         auto r = fast_rasterize_forward(*camera_, *splat, bg_, 0, 0, 0, 0, false);
         if (!r)
             return {};
@@ -706,7 +706,7 @@ protected:
 
 TEST_F(FastGSMultiBucketGradientTest, VerifyBucketCount) {
     // Verify we actually have multiple sub-buckets (>64 instances per tile)
-    auto splat = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, Tensor{}, 1.0f);
     auto r = fast_rasterize_forward(*camera_, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(r.has_value());
 
@@ -783,7 +783,7 @@ TEST_F(FastGSMultiBucketGradientTest, Numerical_Opacity_MultiBucket) {
 
 TEST_F(FastGSMultiBucketGradientTest, GradientDescent_MultiBucket) {
     // Verify gradient descent actually reduces loss with many gaussians per tile
-    auto splat = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, 1.0f);
+    auto splat = std::make_unique<SplatData>(0, means_, sh0_, shN_, scaling_, rotation_, opacity_, Tensor{}, 1.0f);
     auto r = fast_rasterize_forward(*camera_, *splat, bg_, 0, 0, 0, 0, false);
     ASSERT_TRUE(r.has_value());
 

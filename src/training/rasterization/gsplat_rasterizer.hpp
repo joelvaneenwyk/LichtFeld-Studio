@@ -99,6 +99,23 @@ namespace lfs::training {
         lfs::core::Tensor bg_image;
     };
 
+    struct GsplatClodBackwardData {
+        // Base opacity after sigmoid(raw_opacity), before CLoD attenuation [N]
+        lfs::core::Tensor base_opacity;
+        // exp attenuation factor from CLoD equation [N]
+        lfs::core::Tensor attenuation;
+        // Binary CLoD mask (0/1) [N]
+        lfs::core::Tensor mask;
+        // ReLU(sigma_raw) [N]
+        lfs::core::Tensor sigma;
+        // Raw sigma parameter before ReLU [N]
+        lfs::core::Tensor sigma_raw;
+        // (d' * sv)^2 term [N]
+        lfs::core::Tensor dist_scaled_sq;
+        // Numerical epsilon used in denominator
+        float eps = 1e-6f;
+    };
+
     // Forward pass with optional tiling (tile_width/height=0 = full image)
     // bg_image is optional - if provided, uses per-pixel background blending instead of solid color
     std::expected<std::pair<RenderOutput, GsplatRasterizeContext>, std::string> gsplat_rasterize_forward(
@@ -113,6 +130,7 @@ namespace lfs::training {
         bool antialiased = false,
         GsplatRenderMode render_mode = GsplatRenderMode::RGB,
         bool use_gut = false,
+        const lfs::core::Tensor* opacity_override = nullptr,
         const lfs::core::Tensor& bg_image = {});
 
     // Explicit backward pass - computes gradients and accumulates into optimizer
@@ -121,7 +139,8 @@ namespace lfs::training {
         const lfs::core::Tensor& grad_image,
         const lfs::core::Tensor& grad_alpha,
         lfs::core::SplatData& gaussian_model,
-        AdamOptimizer& optimizer);
+        AdamOptimizer& optimizer,
+        const GsplatClodBackwardData* clod_data = nullptr);
 
     // Convenience wrapper for inference (no backward needed)
     inline RenderOutput gsplat_rasterize(
@@ -134,7 +153,7 @@ namespace lfs::training {
         bool use_gut = false) {
         auto result = gsplat_rasterize_forward(
             viewpoint_camera, gaussian_model, bg_color, 0, 0, 0, 0,
-            scaling_modifier, antialiased, render_mode, use_gut);
+            scaling_modifier, antialiased, render_mode, use_gut, nullptr);
         if (!result) {
             throw std::runtime_error(result.error());
         }

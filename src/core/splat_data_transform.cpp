@@ -190,6 +190,9 @@ namespace lfs::core {
         auto cropped_scaling = splat_data._scaling.index_select(0, indices).contiguous();
         auto cropped_rotation = splat_data._rotation.index_select(0, indices).contiguous();
         auto cropped_opacity = splat_data._opacity.index_select(0, indices).contiguous();
+        Tensor cropped_clod_sigma = splat_data._clod_sigma.is_valid()
+                                        ? splat_data._clod_sigma.index_select(0, indices).contiguous()
+                                        : Tensor{};
 
         Tensor scene_center = cropped_means.mean({0}, false);
         Tensor dists = cropped_means.sub(scene_center).norm(2.0f, {1}, false);
@@ -208,6 +211,7 @@ namespace lfs::core {
             std::move(cropped_scaling),
             std::move(cropped_rotation),
             std::move(cropped_opacity),
+            std::move(cropped_clod_sigma),
             new_scene_scale);
 
         cropped_splat.set_active_sh_degree(splat_data._active_sh_degree);
@@ -331,6 +335,9 @@ namespace lfs::core {
         splat_data._scaling = splat_data._scaling.index_select(0, indices_tensor).contiguous();
         splat_data._rotation = splat_data._rotation.index_select(0, indices_tensor).contiguous();
         splat_data._opacity = splat_data._opacity.index_select(0, indices_tensor).contiguous();
+        if (splat_data._clod_sigma.is_valid()) {
+            splat_data._clod_sigma = splat_data._clod_sigma.index_select(0, indices_tensor).contiguous();
+        }
 
         if (splat_data._densification_info.is_valid() && splat_data._densification_info.size(0) == num_points) {
             splat_data._densification_info = splat_data._densification_info.index_select(0, indices_tensor).contiguous();
@@ -448,6 +455,9 @@ namespace lfs::core {
         Tensor shN_selected = splat_data._shN.is_valid()
                                   ? splat_data._shN.index_select(0, indices).contiguous()
                                   : Tensor{};
+        Tensor clod_sigma_selected = splat_data._clod_sigma.is_valid()
+                                         ? splat_data._clod_sigma.index_select(0, indices).contiguous()
+                                         : Tensor{};
 
         SplatData result(
             splat_data._max_sh_degree,
@@ -457,6 +467,7 @@ namespace lfs::core {
             splat_data._scaling.index_select(0, indices).contiguous(),
             splat_data._rotation.index_select(0, indices).contiguous(),
             splat_data._opacity.index_select(0, indices).contiguous(),
+            std::move(clod_sigma_selected),
             splat_data._scene_scale);
         result.set_active_sh_degree(splat_data._active_sh_degree);
         return result;

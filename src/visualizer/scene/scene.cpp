@@ -528,6 +528,7 @@ namespace lfs::vis {
         Tensor sh0 = Tensor::empty({static_cast<size_t>(stats.total_gaussians), static_cast<size_t>(SH0_COEFFS), 3}, device);
         Tensor shN = (shN_coeffs > 0) ? Tensor::zeros({static_cast<size_t>(stats.total_gaussians), static_cast<size_t>(shN_coeffs), 3}, device) : Tensor::empty({static_cast<size_t>(stats.total_gaussians), 0, 3}, device);
         Tensor opacity = Tensor::empty({static_cast<size_t>(stats.total_gaussians), 1}, device);
+        Tensor clod_sigma = Tensor::empty({static_cast<size_t>(stats.total_gaussians), 1}, device);
         Tensor scaling = Tensor::empty({static_cast<size_t>(stats.total_gaussians), 3}, device);
         Tensor rotation = Tensor::empty({static_cast<size_t>(stats.total_gaussians), 4}, device);
 
@@ -554,6 +555,7 @@ namespace lfs::vis {
             rotation.slice(0, offset, offset + size) = model->rotation_raw();
             sh0.slice(0, offset, offset + size) = model->sh0_raw();
             opacity.slice(0, offset, offset + size) = model->opacity_raw();
+            clod_sigma.slice(0, offset, offset + size) = model->clod_sigma_raw();
 
             if (shN_coeffs > 0) {
                 const auto& model_shN = model->shN_raw();
@@ -585,6 +587,7 @@ namespace lfs::vis {
             std::move(scaling),
             std::move(rotation),
             std::move(opacity),
+            std::move(clod_sigma),
             stats.total_scene_scale / visible_nodes.size());
 
         if (has_any_deleted) {
@@ -1325,7 +1328,7 @@ namespace lfs::vis {
                     auto cloned = std::make_unique<lfs::core::SplatData>(
                         model.get_max_sh_degree(),
                         model.means_raw().clone(), model.sh0_raw().clone(), model.shN_raw().clone(),
-                        model.scaling_raw().clone(), model.rotation_raw().clone(), model.opacity_raw().clone(),
+                        model.scaling_raw().clone(), model.rotation_raw().clone(), model.opacity_raw().clone(), model.clod_sigma_raw().clone(),
                         model.get_scene_scale());
                     cloned->set_active_sh_degree(model.get_active_sh_degree());
                     new_id = addSplat(new_name, std::move(cloned), parent_id);
@@ -1430,6 +1433,7 @@ namespace lfs::vis {
                     src->scaling_raw().index_select(0, keep_mask),
                     src->rotation_raw().index_select(0, keep_mask),
                     src->opacity_raw().index_select(0, keep_mask),
+                    src->clod_sigma_raw().is_valid() ? src->clod_sigma_raw().index_select(0, keep_mask) : lfs::core::Tensor(),
                     src->get_scene_scale());
                 result->set_active_sh_degree(src->get_active_sh_degree());
                 return result;
@@ -1442,6 +1446,7 @@ namespace lfs::vis {
                     src->scaling_raw().clone(),
                     src->rotation_raw().clone(),
                     src->opacity_raw().clone(),
+                    src->clod_sigma_raw().is_valid() ? src->clod_sigma_raw().clone() : lfs::core::Tensor(),
                     src->get_scene_scale());
                 result->set_active_sh_degree(src->get_active_sh_degree());
                 return result;
@@ -1449,12 +1454,13 @@ namespace lfs::vis {
         }
 
         const int shN_coeffs = (max_sh > 0) ? ((max_sh + 1) * (max_sh + 1) - 1) : 0;
-        std::vector<lfs::core::Tensor> means_list, sh0_list, shN_list, scaling_list, rotation_list, opacity_list;
+        std::vector<lfs::core::Tensor> means_list, sh0_list, shN_list, scaling_list, rotation_list, opacity_list, clod_sigma_list;
         means_list.reserve(splats.size());
         sh0_list.reserve(splats.size());
         scaling_list.reserve(splats.size());
         rotation_list.reserve(splats.size());
         opacity_list.reserve(splats.size());
+        clod_sigma_list.reserve(splats.size());
         if (shN_coeffs > 0)
             shN_list.reserve(splats.size());
 
@@ -1462,7 +1468,7 @@ namespace lfs::vis {
 
         for (const auto& [model, world_transform] : splats) {
             // Filter out deleted splats first
-            lfs::core::Tensor means, sh0, shN, scaling, rotation, opacity;
+            lfs::core::Tensor means, sh0, shN, scaling, rotation, opacity, clod_sigma;
             if (model->has_deleted_mask()) {
                 const auto keep_mask = model->deleted().logical_not();
                 means = model->means_raw().index_select(0, keep_mask);
@@ -1471,6 +1477,7 @@ namespace lfs::vis {
                 scaling = model->scaling_raw().index_select(0, keep_mask);
                 rotation = model->rotation_raw().index_select(0, keep_mask);
                 opacity = model->opacity_raw().index_select(0, keep_mask);
+                clod_sigma = model->clod_sigma_raw().is_valid() ? model->clod_sigma_raw().index_select(0, keep_mask) : lfs::core::Tensor();
             } else {
                 means = model->means_raw().clone();
                 sh0 = model->sh0_raw().clone();
@@ -1478,6 +1485,7 @@ namespace lfs::vis {
                 scaling = model->scaling_raw().clone();
                 rotation = model->rotation_raw().clone();
                 opacity = model->opacity_raw().clone();
+                clod_sigma = model->clod_sigma_raw().is_valid() ? model->clod_sigma_raw().clone() : lfs::core::Tensor();
             }
 
             lfs::core::SplatData transformed(
@@ -1488,6 +1496,7 @@ namespace lfs::vis {
                 std::move(scaling),
                 std::move(rotation),
                 std::move(opacity),
+                std::move(clod_sigma),
                 model->get_scene_scale());
 
             lfs::core::transform(transformed, world_transform);
@@ -1497,6 +1506,7 @@ namespace lfs::vis {
             scaling_list.push_back(transformed.scaling_raw().clone());
             rotation_list.push_back(transformed.rotation_raw().clone());
             opacity_list.push_back(transformed.opacity_raw().clone());
+            clod_sigma_list.push_back(transformed.clod_sigma_raw().clone());
 
             if (shN_coeffs > 0) {
                 const auto& src_shN = transformed.shN_raw();
@@ -1531,6 +1541,7 @@ namespace lfs::vis {
             lfs::core::Tensor::cat(scaling_list, 0),
             lfs::core::Tensor::cat(rotation_list, 0),
             lfs::core::Tensor::cat(opacity_list, 0),
+            lfs::core::Tensor::cat(clod_sigma_list, 0),
             total_scale / static_cast<float>(splats.size()));
         result->set_active_sh_degree(max_sh);
 

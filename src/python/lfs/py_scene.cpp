@@ -233,6 +233,7 @@ namespace lfs::python {
             scaling.tensor().clone(),
             rotation.tensor().clone(),
             opacity.tensor().clone(),
+            core::Tensor{},
             scene_scale);
 
         const size_t gaussian_count = splat->size();

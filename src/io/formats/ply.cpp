@@ -635,6 +635,7 @@ namespace lfs::io {
                 std::move(scaling),
                 std::move(rotation),
                 std::move(opacity),
+                Tensor{},
                 ply_constants::SCENE_SCALE_FACTOR);
 
             auto end_time = std::chrono::high_resolution_clock::now();

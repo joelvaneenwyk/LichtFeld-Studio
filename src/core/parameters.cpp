@@ -98,6 +98,16 @@ namespace lfs::core {
             opt_json["sparsify_steps"] = sparsify_steps;
             opt_json["init_rho"] = init_rho;
             opt_json["prune_ratio"] = prune_ratio;
+
+            // CLoD-GS
+            opt_json["clod_enable"] = clod_enable;
+            opt_json["clod_max_virtual_scale"] = clod_max_virtual_scale;
+            opt_json["clod_tau"] = clod_tau;
+            opt_json["clod_lambda_reg"] = clod_lambda_reg;
+            opt_json["clod_sigma_lr"] = clod_sigma_lr;
+            opt_json["clod_start_iter"] = clod_start_iter;
+            opt_json["clod_eps"] = clod_eps;
+            opt_json["clod_ws_enable"] = clod_ws_enable;
             opt_json["bg_modulation"] = bg_modulation;
 
             static constexpr const char* BG_MODE_NAMES[] = {"solid_color", "modulation", "image", "random"};
@@ -296,6 +306,30 @@ namespace lfs::core {
             }
             if (json.contains("prune_ratio")) {
                 params.prune_ratio = json["prune_ratio"];
+            }
+            if (json.contains("clod_enable")) {
+                params.clod_enable = json["clod_enable"];
+            }
+            if (json.contains("clod_max_virtual_scale")) {
+                params.clod_max_virtual_scale = json["clod_max_virtual_scale"];
+            }
+            if (json.contains("clod_tau")) {
+                params.clod_tau = json["clod_tau"];
+            }
+            if (json.contains("clod_lambda_reg")) {
+                params.clod_lambda_reg = json["clod_lambda_reg"];
+            }
+            if (json.contains("clod_sigma_lr")) {
+                params.clod_sigma_lr = json["clod_sigma_lr"];
+            }
+            if (json.contains("clod_start_iter")) {
+                params.clod_start_iter = json["clod_start_iter"];
+            }
+            if (json.contains("clod_eps")) {
+                params.clod_eps = json["clod_eps"];
+            }
+            if (json.contains("clod_ws_enable")) {
+                params.clod_ws_enable = json["clod_ws_enable"];
             }
             if (json.contains("bg_modulation")) {
                 params.bg_modulation = json["bg_modulation"];

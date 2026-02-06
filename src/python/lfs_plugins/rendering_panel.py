@@ -88,6 +88,26 @@ class RenderingPanel(Panel):
         layout.prop(settings, "sh_degree")
         layout.prop(settings, "equirectangular")
         layout.prop(settings, "gut")
+        layout.prop(settings, "clod_enable")
+        if settings.clod_enable:
+            layout.indent()
+            layout.prop(settings, "clod_auto_scale")
+            if settings.clod_auto_scale:
+                layout.prop(settings, "clod_navigation_scale")
+                layout.prop(settings, "clod_return_speed")
+                layout.text_disabled(f"Current CLoD Scale: {settings.clod_virtual_scale:.2f}")
+            else:
+                layout.prop(settings, "clod_virtual_scale")
+
+            rendered, total, active = lf.ui.get_clod_render_stats()
+            if total > 0:
+                ratio = max(0.0, min(1.0, rendered / total))
+                status = "Active" if active else "Inactive"
+                layout.text_disabled(f"Gaussians: {rendered:,} / {total:,} ({ratio * 100.0:.1f}%) [{status}]")
+                layout.progress_bar(ratio, f"{ratio * 100.0:.1f}%")
+            else:
+                layout.text_disabled("Gaussians: n/a")
+            layout.unindent()
 
         layout.prop(settings, "apply_appearance_correction")
         if settings.apply_appearance_correction:

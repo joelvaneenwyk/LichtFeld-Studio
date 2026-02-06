@@ -38,7 +38,7 @@ static SplatData create_test_splat_data(int n_gaussians = 100) {
     auto rotation = Tensor::from_vector(rotation_data, TensorShape({static_cast<size_t>(n_gaussians), 4}), Device::CUDA);
     auto opacity = Tensor::from_vector(opacity_data, TensorShape({static_cast<size_t>(n_gaussians), 1}), Device::CUDA);
 
-    return SplatData(3, means, sh0, shN, scaling, rotation, opacity, 1.0f);
+    return SplatData(3, means, sh0, shN, scaling, rotation, opacity, Tensor{}, 1.0f);
 }
 
 // Test split opacity calculation matches reference formula:

@@ -7,6 +7,7 @@
 #include "core/tensor.hpp"
 #include "geometry/euclidean_transform.hpp"
 #include "render_constants.hpp"
+#include <cstddef>
 #include <array>
 #include <expected>
 #include <glm/glm.hpp>
@@ -78,6 +79,8 @@ namespace lfs::rendering {
         float voxel_size = 0.01f;
         bool gut = false;
         bool equirectangular = false;
+        bool clod_enable = false;
+        float clod_virtual_scale = 1.0f;
         bool show_rings = false;
         float ring_width = 0.002f;
         bool show_center_markers = false;
@@ -133,6 +136,9 @@ namespace lfs::rendering {
         float far_plane = DEFAULT_FAR_PLANE;
         bool orthographic = false;
         float split_position = -1.0f; // For split view: normalized split position (-1 = not split view)
+        size_t rendered_gaussians = 0;
+        size_t total_gaussians = 0;
+        bool clod_active = false;
     };
 
     // Split view support

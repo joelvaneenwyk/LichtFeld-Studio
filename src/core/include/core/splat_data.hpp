@@ -57,6 +57,7 @@ namespace lfs::core {
                   Tensor scaling,
                   Tensor rotation,
                   Tensor opacity,
+                  Tensor clod_sigma,
                   float scene_scale);
 
         // ========== Computed getters ==========
@@ -64,6 +65,7 @@ namespace lfs::core {
         Tensor get_opacity() const;  // Returns sigmoid(opacity_raw)
         Tensor get_rotation() const; // Returns normalized quaternions
         Tensor get_scaling() const;  // Returns exp(scaling_raw)
+        Tensor get_clod_sigma() const; // Returns relu(clod_sigma_raw)
         Tensor get_shs() const;      // Returns concatenated sh0 + shN
 
         // ========== Simple inline getters ==========
@@ -91,6 +93,8 @@ namespace lfs::core {
         inline const Tensor& shN() const { return _shN; }
         inline Tensor& shN_raw() { return _shN; }
         inline const Tensor& shN_raw() const { return _shN; }
+        inline Tensor& clod_sigma_raw() { return _clod_sigma; }
+        inline const Tensor& clod_sigma_raw() const { return _clod_sigma; }
 
         // ========== Soft deletion (for undo/redo crop support) ==========
         Tensor& deleted() { return _deleted; }
@@ -136,6 +140,7 @@ namespace lfs::core {
         Tensor _scaling;
         Tensor _rotation;
         Tensor _opacity;
+        Tensor _clod_sigma;
 
         // Soft deletion mask: bool tensor [N], true = hidden from rendering
         Tensor _deleted;

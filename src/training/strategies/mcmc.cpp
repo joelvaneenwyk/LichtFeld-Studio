@@ -191,6 +191,11 @@ namespace lfs::training {
                 sh_coeffs,
                 opacity_dim,
                 N);
+
+            // Copy CLoD sigma for relocated gaussians.
+            _splat_data->clod_sigma_raw().index_put_(
+                dead_indices,
+                _splat_data->clod_sigma_raw().index_select(0, sampled_idxs));
         }
 
         // Update optimizer states for all parameters
@@ -202,6 +207,7 @@ namespace lfs::training {
             update_optimizer_for_relocate(sampled_idxs, dead_indices, ParamType::Scaling);
             update_optimizer_for_relocate(sampled_idxs, dead_indices, ParamType::Rotation);
             update_optimizer_for_relocate(sampled_idxs, dead_indices, ParamType::Opacity);
+            update_optimizer_for_relocate(sampled_idxs, dead_indices, ParamType::ClodSigma);
         }
 
         return n_dead;
@@ -339,6 +345,7 @@ namespace lfs::training {
             _optimizer->add_new_params_gather(ParamType::Rotation, sampled_idxs);
             _optimizer->add_new_params_gather(ParamType::Opacity, sampled_idxs);
             _optimizer->add_new_params_gather(ParamType::Scaling, sampled_idxs);
+            _optimizer->add_new_params_gather(ParamType::ClodSigma, sampled_idxs);
         }
 
         return n_new;
@@ -437,6 +444,7 @@ namespace lfs::training {
             _optimizer->add_new_params_gather(ParamType::Rotation, sampled_idxs_i64);
             _optimizer->add_new_params_gather(ParamType::Opacity, sampled_idxs_i64);
             _optimizer->add_new_params_gather(ParamType::Scaling, sampled_idxs_i64);
+            _optimizer->add_new_params_gather(ParamType::ClodSigma, sampled_idxs_i64);
         }
 
         return n_new;
@@ -553,6 +561,7 @@ namespace lfs::training {
         _splat_data->scaling_raw() = _splat_data->scaling_raw().index_select(0, keep_indices).contiguous();
         _splat_data->rotation_raw() = _splat_data->rotation_raw().index_select(0, keep_indices).contiguous();
         _splat_data->opacity_raw() = _splat_data->opacity_raw().index_select(0, keep_indices).contiguous();
+        _splat_data->clod_sigma_raw() = _splat_data->clod_sigma_raw().index_select(0, keep_indices).contiguous();
 
         // Recreate optimizer with reduced parameters (simpler than manual state update)
         _optimizer = create_optimizer(*_splat_data, *_params);
@@ -596,6 +605,7 @@ namespace lfs::training {
                 replace_with_direct(_splat_data->scaling_raw());
                 replace_with_direct(_splat_data->rotation_raw());
                 replace_with_direct(_splat_data->opacity_raw());
+                replace_with_direct(_splat_data->clod_sigma_raw());
 
                 // Pre-allocate noise buffer [max_cap, 3]
                 _noise_buffer = Tensor::zeros_direct(TensorShape({capacity, 3}), capacity);

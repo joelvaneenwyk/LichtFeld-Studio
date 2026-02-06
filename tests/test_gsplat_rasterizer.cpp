@@ -34,7 +34,7 @@ protected:
             scaling_,
             rotation_,
             opacity_,
-            1.0f // scene_scale
+            Tensor{}, 1.0f // scene_scale
         );
 
         // Create camera

@@ -166,6 +166,8 @@ namespace lfs::rendering {
             .voxel_size = request.voxel_size,
             .gut = request.gut,
             .equirectangular = request.equirectangular,
+            .clod_enable = request.clod_enable,
+            .clod_virtual_scale = request.clod_virtual_scale,
             .show_rings = request.show_rings,
             .ring_width = request.ring_width,
             .show_center_markers = request.show_center_markers,
@@ -296,7 +298,10 @@ namespace lfs::rendering {
             .external_depth_texture = pipeline_result->external_depth_texture,
             .near_plane = pipeline_result->near_plane,
             .far_plane = pipeline_result->far_plane,
-            .orthographic = pipeline_result->orthographic};
+            .orthographic = pipeline_result->orthographic,
+            .rendered_gaussians = pipeline_result->rendered_gaussians,
+            .total_gaussians = pipeline_result->total_gaussians,
+            .clod_active = pipeline_result->clod_active};
 
         return result;
     }
@@ -384,7 +389,10 @@ namespace lfs::rendering {
             .external_depth_texture = pipeline_result->external_depth_texture,
             .near_plane = pipeline_result->near_plane,
             .far_plane = pipeline_result->far_plane,
-            .orthographic = pipeline_result->orthographic};
+            .orthographic = pipeline_result->orthographic,
+            .rendered_gaussians = pipeline_result->rendered_gaussians,
+            .total_gaussians = pipeline_result->total_gaussians,
+            .clod_active = pipeline_result->clod_active};
 
         return result;
     }

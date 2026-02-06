@@ -53,7 +53,8 @@ namespace lfs::rendering {
         float selection_flash_intensity,
         bool orthographic,
         float ortho_scale,
-        bool mip_filter) {
+        bool mip_filter,
+        const Tensor* opacities_raw_override) {
 
         // Get camera parameters
         const float fx = viewpoint_camera.focal_x();
@@ -106,7 +107,14 @@ namespace lfs::rendering {
         const auto& means = gaussian_model.means_raw();
         const auto& scales_raw = gaussian_model.scaling_raw();
         const auto& rotations_raw = gaussian_model.rotation_raw();
-        const auto& opacities_raw = gaussian_model.opacity_raw();
+        const Tensor& opacities_raw_source =
+            (opacities_raw_override != nullptr && opacities_raw_override->is_valid() &&
+             opacities_raw_override->numel() > 0)
+                ? *opacities_raw_override
+                : gaussian_model.opacity_raw();
+        const auto opacities_raw = opacities_raw_source.is_contiguous()
+                                       ? opacities_raw_source
+                                       : opacities_raw_source.contiguous();
         const auto& sh0 = gaussian_model.sh0_raw();
         const auto& shN = gaussian_model.shN_raw();
 

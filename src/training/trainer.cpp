@@ -40,6 +40,7 @@
 #include <expected>
 #include <memory>
 #include <nvtx3/nvToolsExt.h>
+#include <random>
 
 namespace lfs::training {
 
@@ -913,6 +914,78 @@ namespace lfs::training {
         constexpr int BG_PERIOD_R = 37;
         constexpr int BG_PERIOD_G = 41;
         constexpr int BG_PERIOD_B = 43;
+
+        struct ClodTrainingState {
+            float virtual_scale = 1.0f;
+            float ws = 1.0f;
+            lfs::core::Tensor effective_opacity; // [N]
+            lfs::core::Tensor regularization_loss;
+            GsplatClodBackwardData backward_data;
+        };
+
+        float sample_clod_virtual_scale(const lfs::core::param::OptimizationParameters& opt) {
+            if (opt.clod_max_virtual_scale <= 1.0f) {
+                return 1.0f;
+            }
+            thread_local std::mt19937 rng(std::random_device{}());
+            std::uniform_real_distribution<float> dist(1.0f, opt.clod_max_virtual_scale);
+            return dist(rng);
+        }
+
+        ClodTrainingState build_clod_training_state(
+            lfs::core::Camera& cam,
+            lfs::core::SplatData& model,
+            const lfs::core::param::OptimizationParameters& opt,
+            const float virtual_scale) {
+            ClodTrainingState state;
+            state.virtual_scale = virtual_scale;
+            state.ws = opt.clod_ws_enable
+                           ? (1.0f - 0.5f * virtual_scale / std::max(virtual_scale, opt.clod_max_virtual_scale))
+                           : 1.0f;
+
+            const lfs::core::Tensor means = model.get_means().contiguous(); // [N,3]
+            const lfs::core::Tensor cam_pos = cam.cam_position().contiguous();
+
+            lfs::core::Tensor base_opacity = model.get_opacity().contiguous(); // [N]
+            if (base_opacity.ndim() == 2 && base_opacity.shape()[1] == 1) {
+                base_opacity = base_opacity.squeeze(-1);
+            }
+
+            lfs::core::Tensor sigma_raw = model.clod_sigma_raw().contiguous(); // [N,1] expected
+            if (sigma_raw.ndim() == 2 && sigma_raw.shape()[1] == 1) {
+                sigma_raw = sigma_raw.squeeze(-1);
+            }
+            const lfs::core::Tensor sigma = sigma_raw.relu();
+
+            const lfs::core::Tensor distances =
+                (means - cam_pos.unsqueeze(0)).norm(2, -1, true).squeeze(-1);
+            const lfs::core::Tensor max_distance = distances.max().clamp_min(opt.clod_eps);
+            const lfs::core::Tensor normalized_distance = distances / max_distance;
+            const lfs::core::Tensor dist_scaled_sq = (normalized_distance * virtual_scale).square();
+
+            const lfs::core::Tensor denom = sigma.square() * 2.0f + opt.clod_eps;
+            const lfs::core::Tensor attenuation = dist_scaled_sq.neg().div(denom).exp();
+            const lfs::core::Tensor attenuated_opacity = base_opacity * attenuation;
+            const lfs::core::Tensor mask = attenuated_opacity.gt(opt.clod_tau * virtual_scale);
+            const lfs::core::Tensor mask_f = mask.to(lfs::core::DataType::Float32);
+            const lfs::core::Tensor effective_opacity = attenuated_opacity * mask_f;
+
+            const lfs::core::Tensor eta_actual = mask_f.mean();
+            const float eta_target = 1.0f / std::pow(std::max(virtual_scale, 1.0f), 1.5f);
+            state.regularization_loss =
+                (eta_actual - eta_target).relu().square() * ((virtual_scale - 1.0f) * (virtual_scale - 1.0f));
+
+            state.effective_opacity = effective_opacity.contiguous();
+            state.backward_data.base_opacity = base_opacity.contiguous();
+            state.backward_data.attenuation = attenuation.contiguous();
+            state.backward_data.mask = mask.contiguous();
+            state.backward_data.sigma = sigma.contiguous();
+            state.backward_data.sigma_raw = sigma_raw.contiguous();
+            state.backward_data.dist_scaled_sq = dist_scaled_sq.contiguous();
+            state.backward_data.eps = opt.clod_eps;
+
+            return state;
+        }
     } // anonymous namespace
 
     lfs::core::Tensor& Trainer::background_for_step(int iter) {
@@ -1082,6 +1155,16 @@ namespace lfs::training {
                 bg_image = get_random_background_for_camera(cam->image_width(), cam->image_height(), iter);
             }
 
+            const bool clod_active = params_.optimization.clod_enable &&
+                                     iter >= static_cast<int>(params_.optimization.clod_start_iter);
+            const bool use_gsplat_training = params_.optimization.gut || clod_active;
+            std::optional<ClodTrainingState> clod_state;
+            if (clod_active) {
+                const float virtual_scale = sample_clod_virtual_scale(params_.optimization);
+                clod_state.emplace(build_clod_training_state(
+                    *cam, strategy_->get_model(), params_.optimization, virtual_scale));
+            }
+
             // Configurable tile-based training to reduce peak memory
             const int full_width = cam->image_width();
             const int full_height = cam->image_height();
@@ -1170,13 +1253,15 @@ namespace lfs::training {
                 std::optional<FastRasterizeContext> fast_ctx;
                 std::optional<GsplatRasterizeContext> gsplat_ctx;
 
-                if (params_.optimization.gut) {
+                if (use_gsplat_training) {
                     const int tw = (num_tiles > 1) ? tile_width : 0;
                     const int th = (num_tiles > 1) ? tile_height : 0;
                     auto rasterize_result = gsplat_rasterize_forward(
                         *cam, strategy_->get_model(), bg,
                         tile_x_offset, tile_y_offset, tw, th,
-                        1.0f, false, GsplatRenderMode::RGB, true, bg_tile);
+                        1.0f, false, GsplatRenderMode::RGB, params_.optimization.gut,
+                        clod_state ? &clod_state->effective_opacity : nullptr,
+                        bg_tile);
 
                     if (!rasterize_result) {
                         nvtxRangePop(); // rasterize_forward
@@ -1411,7 +1496,8 @@ namespace lfs::training {
                                               ? tile_grad_alpha
                                               : lfs::core::Tensor::zeros_like(output.alpha);
                         gsplat_rasterize_backward(*gsplat_ctx, raster_grad, grad_alpha,
-                                                  strategy_->get_model(), strategy_->get_optimizer());
+                                                  strategy_->get_model(), strategy_->get_optimizer(),
+                                                  clod_state ? &clod_state->backward_data : nullptr);
                     } else {
                         fast_rasterize_backward(*fast_ctx, raster_grad, strategy_->get_model(),
                                                 strategy_->get_optimizer(), tile_grad_alpha);
@@ -1430,6 +1516,11 @@ namespace lfs::training {
                 return iter < params_.optimization.iterations && !stop_requested_.load() && !stop_token.stop_requested()
                            ? StepResult::Continue
                            : StepResult::Stop;
+            }
+
+            if (clod_state) {
+                loss_tensor_gpu = (loss_tensor_gpu + clod_state->regularization_loss * params_.optimization.clod_lambda_reg) *
+                                  clod_state->ws;
             }
 
             if (in_controller_phase) {

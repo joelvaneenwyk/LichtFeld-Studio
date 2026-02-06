@@ -52,7 +52,7 @@ protected:
             std::move(scaling_raw),
             std::move(rotation_raw),
             std::move(opacity_raw),
-            1.0f // scene_scale
+            Tensor{}, 1.0f // scene_scale
         );
 
         // Create optimizer and allocate gradients

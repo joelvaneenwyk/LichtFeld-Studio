@@ -100,6 +100,7 @@ namespace lfs::training {
         case ParamType::Scaling: return splat_data_.scaling_raw();
         case ParamType::Rotation: return splat_data_.rotation_raw();
         case ParamType::Opacity: return splat_data_.opacity_raw();
+        case ParamType::ClodSigma: return splat_data_.clod_sigma_raw();
         }
         throw std::runtime_error("Invalid ParamType");
     }
@@ -121,6 +122,7 @@ namespace lfs::training {
         case ParamType::Scaling: return "scaling";
         case ParamType::Rotation: return "rotation";
         case ParamType::Opacity: return "opacity";
+        case ParamType::ClodSigma: return "clod_sigma";
         }
         return "unknown";
     }

@@ -27,6 +27,7 @@ TEST(BinarySearchBug, Step1_CreateSplatData) {
                                    Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
                                    rotation,
                                    Tensor::randn({n, 1}, Device::CUDA),
+                                   Tensor{},
                                    1.0f);
 
         std::cout << "[TEST] SplatData created, size=" << splat.size() << std::endl;
@@ -61,6 +62,7 @@ TEST(BinarySearchBug, Step2_CreateStrategy) {
                                    Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
                                    rotation,
                                    Tensor::randn({n, 1}, Device::CUDA),
+                                   Tensor{},
                                    1.0f);
 
         std::cout << "[TEST] SplatData created" << std::endl;
@@ -98,6 +100,7 @@ TEST(BinarySearchBug, Step3_InitializeStrategy) {
                                    Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
                                    rotation,
                                    Tensor::randn({n, 1}, Device::CUDA),
+                                   Tensor{},
                                    1.0f);
 
         lfs::training::ADC strat(splat);
@@ -148,6 +151,7 @@ TEST(BinarySearchBug, Step4_CallPostBackward) {
                                    Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
                                    rotation,
                                    Tensor::randn({n, 1}, Device::CUDA),
+                                   Tensor{},
                                    1.0f);
 
         splat._densification_info = Tensor::ones({2, n}, Device::CUDA);

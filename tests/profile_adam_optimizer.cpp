@@ -49,7 +49,7 @@ SplatData create_test_splat_data(size_t N, size_t dims) {
     auto rotation = Tensor::randn({N, 4}, Device::CUDA);
     auto opacity = Tensor::randn({N, 1}, Device::CUDA);
     return SplatData(3, std::move(means), std::move(sh0), std::move(shN),
-                     std::move(scaling), std::move(rotation), std::move(opacity), 1.0f);
+                     std::move(scaling), std::move(rotation), std::move(opacity), Tensor{}, 1.0f);
 }
 
 // Convert between tensor types

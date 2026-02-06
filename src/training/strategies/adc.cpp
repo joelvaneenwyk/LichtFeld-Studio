@@ -94,6 +94,7 @@ namespace lfs::training {
             _splat_data->scaling_raw().append_gather(append_src_indices);
             _splat_data->sh0().append_gather(append_src_indices);
             _splat_data->opacity_raw().append_gather(append_src_indices);
+            _splat_data->clod_sigma_raw().append_gather(append_src_indices);
 
             auto& shN = _splat_data->shN();
             if (has_shN_coefficients(shN)) {
@@ -108,6 +109,7 @@ namespace lfs::training {
             _optimizer->extend_state_for_new_params(ParamType::Sh0, n_new);
             _optimizer->extend_state_for_new_params(ParamType::ShN, n_new);
             _optimizer->extend_state_for_new_params(ParamType::Opacity, n_new);
+            _optimizer->extend_state_for_new_params(ParamType::ClodSigma, n_new);
         }
     }
 
@@ -144,6 +146,7 @@ namespace lfs::training {
         auto second_rotations = lfs::core::Tensor::empty({static_cast<size_t>(num_split), 4}, device);
         auto second_scales = lfs::core::Tensor::empty({static_cast<size_t>(num_split), 3}, device);
         auto second_sh0 = lfs::core::Tensor::empty({static_cast<size_t>(num_split), 3}, device);
+        auto second_clod_sigma = _splat_data->clod_sigma_raw().index_select(0, split_idxs).contiguous();
         lfs::core::Tensor second_shN;
         if (has_shN) {
             second_shN = lfs::core::Tensor::empty({static_cast<size_t>(num_split), static_cast<size_t>(shN_dim)}, device);
@@ -203,12 +206,13 @@ namespace lfs::training {
         reset_optimizer_state_at_indices(ParamType::Sh0);
         reset_optimizer_state_at_indices(ParamType::ShN);
         reset_optimizer_state_at_indices(ParamType::Opacity);
+        reset_optimizer_state_at_indices(ParamType::ClodSigma);
 
         // Now place second split results: fill free slots first, then append
         // Try to fill free slots first
         auto [filled_indices, remaining] = fill_free_slots_with_data(
             second_positions, second_rotations, second_scales,
-            second_sh0, second_shN, second_opacities, num_split);
+            second_sh0, second_shN, second_opacities, second_clod_sigma, num_split);
 
         const int64_t num_filled = num_split - remaining;
 
@@ -223,6 +227,7 @@ namespace lfs::training {
             const auto append_scales = second_scales.slice(0, num_filled, num_split);
             const auto append_sh0_flat = second_sh0.slice(0, num_filled, num_split);
             const auto append_opacities = second_opacities.slice(0, num_filled, num_split);
+            const auto append_clod_sigma = second_clod_sigma.slice(0, num_filled, num_split);
 
             // Create indices for new rows
             std::vector<int> new_indices_vec(n_remaining);
@@ -250,6 +255,9 @@ namespace lfs::training {
             _splat_data->opacity_raw().append_zeros(n_remaining);
             _splat_data->opacity_raw().index_put_(new_indices, append_opacities);
 
+            _splat_data->clod_sigma_raw().append_zeros(n_remaining);
+            _splat_data->clod_sigma_raw().index_put_(new_indices, append_clod_sigma);
+
             if (use_shN) {
                 auto append_shN = second_shN.slice(0, num_filled, num_split);
                 const auto& shN_shape = _splat_data->shN().shape();
@@ -268,6 +276,7 @@ namespace lfs::training {
             _optimizer->extend_state_for_new_params(ParamType::Sh0, n_remaining);
             _optimizer->extend_state_for_new_params(ParamType::ShN, n_remaining);
             _optimizer->extend_state_for_new_params(ParamType::Opacity, n_remaining);
+            _optimizer->extend_state_for_new_params(ParamType::ClodSigma, n_remaining);
         }
 
         LOG_DEBUG("split(): done, {} filled free slots, {} appended", num_filled, remaining);
@@ -280,6 +289,7 @@ namespace lfs::training {
         const lfs::core::Tensor& sh0,
         const lfs::core::Tensor& shN,
         const lfs::core::Tensor& opacities,
+        const lfs::core::Tensor& clod_sigma,
         int64_t count) {
 
         if (!_free_mask.is_valid() || count == 0) {
@@ -310,6 +320,7 @@ namespace lfs::training {
         _splat_data->sh0().index_put_(target_indices, sh0_reshaped);
 
         _splat_data->opacity_raw().index_put_(target_indices, opacities.slice(0, 0, slots_to_fill));
+        _splat_data->clod_sigma_raw().index_put_(target_indices, clod_sigma.slice(0, 0, slots_to_fill));
 
         if (shN.is_valid() && has_shN_coefficients(_splat_data->shN())) {
             const auto& shN_shape = _splat_data->shN().shape();
@@ -349,6 +360,7 @@ namespace lfs::training {
         reset_optimizer_state(ParamType::Sh0);
         reset_optimizer_state(ParamType::ShN);
         reset_optimizer_state(ParamType::Opacity);
+        reset_optimizer_state(ParamType::ClodSigma);
 
         // Mark filled slots as active
         auto false_vals = lfs::core::Tensor::zeros_bool({static_cast<size_t>(slots_to_fill)}, target_indices.device());
@@ -489,6 +501,7 @@ namespace lfs::training {
         zero_optimizer_state(ParamType::Sh0);
         zero_optimizer_state(ParamType::ShN);
         zero_optimizer_state(ParamType::Opacity);
+        zero_optimizer_state(ParamType::ClodSigma);
 
         LOG_DEBUG("remove(): soft-deleted {} Gaussians (marked as free, rotation & gradients zeroed)", num_pruned);
     }
@@ -761,6 +774,7 @@ namespace lfs::training {
         _splat_data->scaling_raw().index_put_(target_indices, _splat_data->scaling_raw().index_select(0, src_indices));
         _splat_data->sh0().index_put_(target_indices, _splat_data->sh0().index_select(0, src_indices));
         _splat_data->opacity_raw().index_put_(target_indices, _splat_data->opacity_raw().index_select(0, src_indices));
+        _splat_data->clod_sigma_raw().index_put_(target_indices, _splat_data->clod_sigma_raw().index_select(0, src_indices));
 
         auto& shN = _splat_data->shN();
         if (has_shN_coefficients(shN)) {
@@ -793,6 +807,7 @@ namespace lfs::training {
         update_optimizer_state(ParamType::Sh0);
         update_optimizer_state(ParamType::ShN);
         update_optimizer_state(ParamType::Opacity);
+        update_optimizer_state(ParamType::ClodSigma);
 
         // Mark filled slots as active (not free)
         auto false_vals = lfs::core::Tensor::zeros_bool({static_cast<size_t>(slots_to_fill)}, target_indices.device());

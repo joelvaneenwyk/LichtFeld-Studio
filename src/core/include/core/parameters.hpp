@@ -126,6 +126,16 @@ namespace lfs::core {
             float init_rho = 0.0005f;
             float prune_ratio = 0.6f;
 
+            // CLoD-GS parameters
+            bool clod_enable = false;            // Enable CLoD-GS during training
+            float clod_max_virtual_scale = 5.0f; // Max virtual distance scale for sv ~ U(1, max)
+            float clod_tau = 0.005f;             // Base opacity threshold tau
+            float clod_lambda_reg = 1.0f;        // Weight for CLoD regularization loss
+            float clod_sigma_lr = 1e-2f;         // Learning rate for per-gaussian sigma_d
+            size_t clod_start_iter = 5'000;      // Iteration to enable CLoD behavior
+            float clod_eps = 1e-6f;              // Numerical stability epsilon in attenuation
+            bool clod_ws_enable = true;          // Enable adaptive ws weight from paper
+
             std::string config_file = "";
 
             nlohmann::json to_json() const;

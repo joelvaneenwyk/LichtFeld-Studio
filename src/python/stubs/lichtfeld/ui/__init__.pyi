@@ -1686,6 +1686,11 @@ def is_point_cloud_forced() -> bool:
 def get_fps() -> float:
     """Get current FPS"""
 
+def get_clod_render_stats() -> tuple[int, int, bool]:
+    """
+    Get CLoD render stats as (rendered_gaussians, total_gaussians, clod_active)
+    """
+
 def get_gpu_memory() -> tuple[int, int]:
     """Get GPU memory (used, total) in bytes"""
 

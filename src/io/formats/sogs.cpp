@@ -511,6 +511,7 @@ namespace lfs::io {
                 std::move(scales),
                 std::move(rotations),
                 std::move(opacity),
+                Tensor{},
                 1.0f); // scene_scale
 
             LOG_INFO("Successfully reconstructed {} splats", num_splats);
