@@ -82,7 +82,7 @@ namespace lfs::core {
             if (bucket_idx >= NUM_BUCKETS)
                 return nullptr;
 
-            CachedBlock block;
+            CachedBlock block{};
             {
                 std::lock_guard<std::mutex> lock(buckets_[bucket_idx].mutex);
                 if (!buckets_[bucket_idx].cache.empty()) {
@@ -97,7 +97,7 @@ namespace lfs::core {
                     return nullptr;
                 }
             }
-            waitForCUDAStream(consumer_stream, block.stream);
+            wait_for_block(block, consumer_stream);
             return block.ptr;
         }
 
@@ -107,18 +107,44 @@ namespace lfs::core {
             if (bucket_idx >= NUM_BUCKETS)
                 return false;
 
-            std::lock_guard<std::mutex> lock(buckets_[bucket_idx].mutex);
-            if (buckets_[bucket_idx].cache.size() >= CACHE_SIZE_PER_BUCKET) {
-                CachedBlock evicted = buckets_[bucket_idx].cache.front();
-                buckets_[bucket_idx].cache.erase(buckets_[bucket_idx].cache.begin());
-                buckets_[bucket_idx].cached_bytes -= bucket_size;
-                stats_.bytes_cached.fetch_sub(bucket_size, std::memory_order_relaxed);
-                cudaFreeAsync(evicted.ptr, evicted.stream);
+            cudaEvent_t ready_event = nullptr;
+            cudaError_t err = cudaEventCreateWithFlags(&ready_event, cudaEventDisableTiming);
+            if (err != cudaSuccess) {
+                LOG_WARN("SizeBucketedPool: cudaEventCreateWithFlags failed, bypassing cache: {}",
+                         cudaGetErrorString(err));
+                cudaFree(ptr);
+                return true;
             }
-            buckets_[bucket_idx].cache.push_back({ptr, producer_stream});
-            buckets_[bucket_idx].cached_bytes += bucket_size;
-            stats_.free_count.fetch_add(1, std::memory_order_relaxed);
-            stats_.bytes_cached.fetch_add(bucket_size, std::memory_order_relaxed);
+
+            err = cudaEventRecord(ready_event, producer_stream);
+            if (err != cudaSuccess) {
+                LOG_WARN("SizeBucketedPool: cudaEventRecord failed, bypassing cache: {}",
+                         cudaGetErrorString(err));
+                cudaEventDestroy(ready_event);
+                cudaFree(ptr);
+                return true;
+            }
+
+            CachedBlock evicted{};
+            bool has_evicted = false;
+            {
+                std::lock_guard<std::mutex> lock(buckets_[bucket_idx].mutex);
+                if (buckets_[bucket_idx].cache.size() >= CACHE_SIZE_PER_BUCKET) {
+                    evicted = buckets_[bucket_idx].cache.front();
+                    buckets_[bucket_idx].cache.erase(buckets_[bucket_idx].cache.begin());
+                    buckets_[bucket_idx].cached_bytes -= bucket_size;
+                    stats_.bytes_cached.fetch_sub(bucket_size, std::memory_order_relaxed);
+                    has_evicted = true;
+                }
+                buckets_[bucket_idx].cache.push_back({ptr, ready_event});
+                buckets_[bucket_idx].cached_bytes += bucket_size;
+                stats_.free_count.fetch_add(1, std::memory_order_relaxed);
+                stats_.bytes_cached.fetch_add(bucket_size, std::memory_order_relaxed);
+            }
+
+            if (has_evicted) {
+                release_block(evicted);
+            }
             return true;
         }
 
@@ -153,12 +179,15 @@ namespace lfs::core {
 
         void trim_cache() {
             for (size_t i = 0; i < NUM_BUCKETS; ++i) {
-                std::lock_guard<std::mutex> lock(buckets_[i].mutex);
-                for (auto& block : buckets_[i].cache) {
-                    cudaFree(block.ptr);
+                std::vector<CachedBlock> blocks_to_release;
+                {
+                    std::lock_guard<std::mutex> lock(buckets_[i].mutex);
+                    blocks_to_release.swap(buckets_[i].cache);
+                    buckets_[i].cached_bytes = 0;
                 }
-                buckets_[i].cache.clear();
-                buckets_[i].cached_bytes = 0;
+                for (auto& block : blocks_to_release) {
+                    release_block(block);
+                }
             }
             stats_.bytes_cached.store(0, std::memory_order_relaxed);
         }
@@ -188,8 +217,8 @@ namespace lfs::core {
 
     private:
         struct CachedBlock {
-            void* ptr;
-            cudaStream_t stream;
+            void* ptr{nullptr};
+            cudaEvent_t ready_event{nullptr};
         };
 
         struct Bucket {
@@ -203,6 +232,55 @@ namespace lfs::core {
         };
 
         SizeBucketedPool() = default;
+
+        static void wait_for_block(CachedBlock& block, cudaStream_t consumer_stream) {
+            if (!block.ready_event)
+                return;
+
+            cudaError_t err = cudaStreamWaitEvent(consumer_stream, block.ready_event, 0);
+            if (err != cudaSuccess) {
+                LOG_WARN("SizeBucketedPool: cudaStreamWaitEvent failed, synchronizing event: {}",
+                         cudaGetErrorString(err));
+                err = cudaEventSynchronize(block.ready_event);
+                if (err != cudaSuccess) {
+                    LOG_WARN("SizeBucketedPool: cudaEventSynchronize failed: {}",
+                             cudaGetErrorString(err));
+                }
+            }
+
+            err = cudaEventDestroy(block.ready_event);
+            if (err != cudaSuccess) {
+                LOG_WARN("SizeBucketedPool: cudaEventDestroy failed: {}",
+                         cudaGetErrorString(err));
+            }
+            block.ready_event = nullptr;
+        }
+
+        static void release_block(CachedBlock& block) {
+            if (!block.ptr)
+                return;
+
+            if (block.ready_event) {
+                cudaError_t err = cudaEventSynchronize(block.ready_event);
+                if (err != cudaSuccess) {
+                    LOG_WARN("SizeBucketedPool: cudaEventSynchronize failed during eviction: {}",
+                             cudaGetErrorString(err));
+                }
+                err = cudaEventDestroy(block.ready_event);
+                if (err != cudaSuccess) {
+                    LOG_WARN("SizeBucketedPool: cudaEventDestroy failed during eviction: {}",
+                             cudaGetErrorString(err));
+                }
+                block.ready_event = nullptr;
+            }
+
+            cudaError_t err = cudaFree(block.ptr);
+            if (err != cudaSuccess) {
+                LOG_WARN("SizeBucketedPool: cudaFree failed during eviction: {}",
+                         cudaGetErrorString(err));
+            }
+            block.ptr = nullptr;
+        }
 
         ~SizeBucketedPool() {
             shutdown();

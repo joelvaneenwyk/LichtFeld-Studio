@@ -97,49 +97,33 @@ namespace lfs::core::tensor_ops {
         }
 
         float reduce_sum(const float* data, size_t n, cudaStream_t stream) {
-            if (n == 0)
-                return 0.0f;
-            size_t temp_bytes = temp_capacity_;
-            cub::DeviceReduce::Sum(temp_storage_, temp_bytes, data, d_scalar_, n, stream);
-            if (stream) {
-                CHECK_CUDA(cudaMemcpyAsync(h_scalar_, d_scalar_, sizeof(float), cudaMemcpyDeviceToHost, stream));
-                CHECK_CUDA(cudaStreamSynchronize(stream));
-            } else {
-                CHECK_CUDA(cudaMemcpy(h_scalar_, d_scalar_, sizeof(float), cudaMemcpyDeviceToHost));
-            }
-            return *h_scalar_;
+            std::lock_guard<std::mutex> lock(mutex_);
+            return reduce_sum_locked(data, n, stream);
         }
 
         float reduce_mean(const float* data, size_t n, cudaStream_t stream) {
-            return n ? reduce_sum(data, n, stream) / static_cast<float>(n) : 0.0f;
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (n == 0)
+                return 0.0f;
+            return reduce_sum_locked(data, n, stream) / static_cast<float>(n);
         }
 
         float reduce_max(const float* data, size_t n, cudaStream_t stream) {
+            std::lock_guard<std::mutex> lock(mutex_);
             if (n == 0)
                 return -std::numeric_limits<float>::infinity();
             size_t temp_bytes = temp_capacity_;
             cub::DeviceReduce::Max(temp_storage_, temp_bytes, data, d_scalar_, n, stream);
-            if (stream) {
-                CHECK_CUDA(cudaMemcpyAsync(h_scalar_, d_scalar_, sizeof(float), cudaMemcpyDeviceToHost, stream));
-                CHECK_CUDA(cudaStreamSynchronize(stream));
-            } else {
-                CHECK_CUDA(cudaMemcpy(h_scalar_, d_scalar_, sizeof(float), cudaMemcpyDeviceToHost));
-            }
-            return *h_scalar_;
+            return copy_scalar_to_host_locked(stream);
         }
 
         float reduce_min(const float* data, size_t n, cudaStream_t stream) {
+            std::lock_guard<std::mutex> lock(mutex_);
             if (n == 0)
                 return std::numeric_limits<float>::infinity();
             size_t temp_bytes = temp_capacity_;
             cub::DeviceReduce::Min(temp_storage_, temp_bytes, data, d_scalar_, n, stream);
-            if (stream) {
-                CHECK_CUDA(cudaMemcpyAsync(h_scalar_, d_scalar_, sizeof(float), cudaMemcpyDeviceToHost, stream));
-                CHECK_CUDA(cudaStreamSynchronize(stream));
-            } else {
-                CHECK_CUDA(cudaMemcpy(h_scalar_, d_scalar_, sizeof(float), cudaMemcpyDeviceToHost));
-            }
-            return *h_scalar_;
+            return copy_scalar_to_host_locked(stream);
         }
 
         ~ScalarReductionCache() {
@@ -152,6 +136,24 @@ namespace lfs::core::tensor_ops {
         }
 
     private:
+        float copy_scalar_to_host_locked(cudaStream_t stream) const {
+            if (stream) {
+                CHECK_CUDA(cudaMemcpyAsync(h_scalar_, d_scalar_, sizeof(float), cudaMemcpyDeviceToHost, stream));
+                CHECK_CUDA(cudaStreamSynchronize(stream));
+            } else {
+                CHECK_CUDA(cudaMemcpy(h_scalar_, d_scalar_, sizeof(float), cudaMemcpyDeviceToHost));
+            }
+            return *h_scalar_;
+        }
+
+        float reduce_sum_locked(const float* data, size_t n, cudaStream_t stream) {
+            if (n == 0)
+                return 0.0f;
+            size_t temp_bytes = temp_capacity_;
+            cub::DeviceReduce::Sum(temp_storage_, temp_bytes, data, d_scalar_, n, stream);
+            return copy_scalar_to_host_locked(stream);
+        }
+
         ScalarReductionCache() {
             cudaMalloc(&d_scalar_, sizeof(float));
             cudaMallocHost(&h_scalar_, sizeof(float));
@@ -159,6 +161,7 @@ namespace lfs::core::tensor_ops {
             cudaMalloc(&temp_storage_, temp_capacity_);
         }
 
+        std::mutex mutex_;
         float* d_scalar_ = nullptr;
         float* h_scalar_ = nullptr;
         void* temp_storage_ = nullptr;

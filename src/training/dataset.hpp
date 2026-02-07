@@ -569,6 +569,8 @@ namespace lfs::training {
                     example.mask = std::move(*ready.mask);
                 }
 
+                // Keep the pipeline saturated after consuming one sample.
+                prefetch_next_batch();
                 return example;
             } catch (const std::exception& e) {
                 LOG_ERROR("[PipelinedDataLoader] Error: {}", e.what());

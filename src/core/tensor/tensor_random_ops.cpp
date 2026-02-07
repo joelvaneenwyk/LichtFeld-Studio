@@ -7,6 +7,7 @@
 #include <atomic>
 #include <curand.h>
 #include <curand_kernel.h>
+#include <mutex>
 #include <random>
 
 #define CHECK_CUDA(call)                              \
@@ -40,6 +41,7 @@ namespace lfs::core {
         uint64_t seed_ = 42;
         void* cuda_generator_ = nullptr;
         std::mt19937_64 cpu_generator_;
+        std::mutex cuda_generator_mutex_;
 
         RandomGeneratorImpl() : seed_(42),
                                 cpu_generator_(seed_) {
@@ -81,9 +83,10 @@ namespace lfs::core {
         cpu_generator_.seed(seed);
 
         auto* impl = static_cast<RandomGeneratorImpl*>(impl_);
+        std::lock_guard<std::mutex> lock(impl->cuda_generator_mutex_);
         impl->seed_ = seed;
         impl->cpu_generator_.seed(seed);
-        impl->call_counter_.store(0); // Reset call counter when seed is set
+        impl->call_counter_.store(0, std::memory_order_relaxed); // Reset call counter when seed is set
 
         if (impl->cuda_generator_) {
             curandGenerator_t* gen = static_cast<curandGenerator_t*>(impl->cuda_generator_);
@@ -134,13 +137,17 @@ namespace lfs::core {
             CHECK_CUDA(waitForCUDAStream(active_stream, stream_));
             stream_ = active_stream;
 
-            curandGenerator_t* gen = static_cast<curandGenerator_t*>(
-                RandomGenerator::instance().get_generator(Device::CUDA));
+            auto* impl = static_cast<RandomGeneratorImpl*>(
+                RandomGenerator::instance().get_impl());
+            curandGenerator_t* gen = static_cast<curandGenerator_t*>(impl->cuda_generator_);
 
-            uint64_t offset = RandomGenerator::instance().get_next_cuda_offset();
-            CHECK_CURAND(curandSetGeneratorOffset(*gen, offset));
-            CHECK_CURAND(curandSetStream(*gen, active_stream));
-            CHECK_CURAND(curandGenerateUniform(*gen, ptr<float>(), n));
+            {
+                std::lock_guard<std::mutex> lock(impl->cuda_generator_mutex_);
+                uint64_t offset = impl->call_counter_.fetch_add(1, std::memory_order_relaxed) * 1000000ULL;
+                CHECK_CURAND(curandSetGeneratorOffset(*gen, offset));
+                CHECK_CURAND(curandSetStream(*gen, active_stream));
+                CHECK_CURAND(curandGenerateUniform(*gen, ptr<float>(), n));
+            }
 
             // Scale from (0,1] to [low,high)
             if (low != 0.0f || high != 1.0f) {
@@ -186,17 +193,21 @@ namespace lfs::core {
             CHECK_CUDA(waitForCUDAStream(active_stream, stream_));
             stream_ = active_stream;
 
-            curandGenerator_t* gen = static_cast<curandGenerator_t*>(
-                RandomGenerator::instance().get_generator(Device::CUDA));
+            auto* impl = static_cast<RandomGeneratorImpl*>(
+                RandomGenerator::instance().get_impl());
+            curandGenerator_t* gen = static_cast<curandGenerator_t*>(impl->cuda_generator_);
 
-            uint64_t offset = RandomGenerator::instance().get_next_cuda_offset();
-            CHECK_CURAND(curandSetGeneratorOffset(*gen, offset));
-            CHECK_CURAND(curandSetStream(*gen, active_stream));
+            {
+                std::lock_guard<std::mutex> lock(impl->cuda_generator_mutex_);
+                uint64_t offset = impl->call_counter_.fetch_add(1, std::memory_order_relaxed) * 1000000ULL;
+                CHECK_CURAND(curandSetGeneratorOffset(*gen, offset));
+                CHECK_CURAND(curandSetStream(*gen, active_stream));
 
-            if (n % 2 == 1) {
-                CHECK_CURAND(curandGenerateNormal(*gen, ptr<float>(), n + 1, mean, std));
-            } else {
-                CHECK_CURAND(curandGenerateNormal(*gen, ptr<float>(), n, mean, std));
+                if (n % 2 == 1) {
+                    CHECK_CURAND(curandGenerateNormal(*gen, ptr<float>(), n + 1, mean, std));
+                } else {
+                    CHECK_CURAND(curandGenerateNormal(*gen, ptr<float>(), n, mean, std));
+                }
             }
         } else {
             // CPU uses stateful generator

@@ -36,11 +36,13 @@
 #include <filesystem>
 
 #include <atomic>
+#include <algorithm>
 #include <cmath>
 #include <cuda_runtime.h>
 #include <expected>
 #include <memory>
 #include <nvtx3/nvToolsExt.h>
+#include <thread>
 
 namespace lfs::training {
 
@@ -1748,23 +1750,52 @@ namespace lfs::training {
 
             // Conservative prefetch to avoid VRAM exhaustion
             lfs::io::PipelinedLoaderConfig pipelined_config;
-            pipelined_config.jpeg_batch_size = 8;
-            pipelined_config.prefetch_count = 8;
-            pipelined_config.output_queue_size = 4;
-            pipelined_config.io_threads = 2;
+            const unsigned hw_threads = std::max(1u, std::thread::hardware_concurrency());
+            size_t free_vram = 0;
+            size_t total_vram = 0;
+            if (const auto mem_err = cudaMemGetInfo(&free_vram, &total_vram); mem_err != cudaSuccess) {
+                LOG_WARN("Failed to query VRAM size for dataloader tuning: {}", cudaGetErrorString(mem_err));
+                free_vram = 0;
+                total_vram = 0;
+            }
+
+            constexpr size_t GIB = 1024ULL * 1024ULL * 1024ULL;
+            if (free_vram >= 10ULL * GIB) {
+                pipelined_config.jpeg_batch_size = 16;
+            } else if (free_vram >= 5ULL * GIB) {
+                pipelined_config.jpeg_batch_size = 8;
+            } else {
+                pipelined_config.jpeg_batch_size = 4;
+            }
+            pipelined_config.prefetch_count = std::clamp<size_t>(pipelined_config.jpeg_batch_size * 2, 8, 32);
+            pipelined_config.output_queue_size = std::max<size_t>(4, pipelined_config.prefetch_count / 2);
+            pipelined_config.io_threads = std::clamp<size_t>(hw_threads / 4, 2, 8);
+            pipelined_config.cold_process_threads = std::clamp<size_t>(hw_threads / 8, 2, 6);
 
             // Non-JPEG images (PNG, WebP) need CPU decoding - use more threads until cache warms
             constexpr float NON_JPEG_THRESHOLD = 0.1f;
             constexpr size_t MIN_COLD_THREADS = 4;
-            constexpr size_t COLD_PREFETCH_COUNT = 16;
             const float non_jpeg_ratio = train_dataset_->get_non_jpeg_ratio();
             if (non_jpeg_ratio > NON_JPEG_THRESHOLD) {
                 const size_t cold_threads = std::max(MIN_COLD_THREADS,
                                                      static_cast<size_t>(std::thread::hardware_concurrency() / 2));
-                pipelined_config.cold_process_threads = cold_threads;
-                pipelined_config.prefetch_count = COLD_PREFETCH_COUNT;
+                pipelined_config.cold_process_threads = std::clamp<size_t>(cold_threads, MIN_COLD_THREADS, 16);
+                pipelined_config.prefetch_count = std::max(
+                    pipelined_config.prefetch_count,
+                    pipelined_config.cold_process_threads * 2);
+                pipelined_config.output_queue_size = std::max<size_t>(
+                    pipelined_config.output_queue_size,
+                    pipelined_config.prefetch_count / 2);
                 LOG_INFO("{:.0f}% non-JPEG images, using {} cold threads", non_jpeg_ratio * 100.0f, cold_threads);
             }
+
+            LOG_INFO("Pipelined loader tuned: batch={}, prefetch={}, io_threads={}, cold_threads={}, free_vram={:.1f}/{:.1f} GiB",
+                     pipelined_config.jpeg_batch_size,
+                     pipelined_config.prefetch_count,
+                     pipelined_config.io_threads,
+                     pipelined_config.cold_process_threads,
+                     static_cast<double>(free_vram) / static_cast<double>(GIB),
+                     static_cast<double>(total_vram) / static_cast<double>(GIB));
 
             const bool alpha_available = scene_ && scene_->imagesHaveAlpha();
             PipelinedMaskConfig mask_pipeline_config;

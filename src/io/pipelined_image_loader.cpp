@@ -93,6 +93,44 @@ namespace lfs::io {
             return {data, w, h};
         }
 
+        void free_lfs_image_async(uint8_t* data, cudaStream_t stream) {
+            if (!data) {
+                return;
+            }
+            if (stream == nullptr) {
+                lfs::core::free_image(data);
+                return;
+            }
+            if (const auto err = cudaLaunchHostFunc(
+                    stream,
+                    [](void* ptr) { lfs::core::free_image(static_cast<uint8_t*>(ptr)); },
+                    data);
+                err != cudaSuccess) {
+                // Fallback: preserve correctness even if callback registration fails.
+                cudaStreamSynchronize(stream);
+                lfs::core::free_image(data);
+            }
+        }
+
+        void free_stbi_image_async(uint8_t* data, cudaStream_t stream) {
+            if (!data) {
+                return;
+            }
+            if (stream == nullptr) {
+                stbi_image_free(data);
+                return;
+            }
+            if (const auto err = cudaLaunchHostFunc(
+                    stream,
+                    [](void* ptr) { stbi_image_free(ptr); },
+                    data);
+                err != cudaSuccess) {
+                // Fallback: preserve correctness even if callback registration fails.
+                cudaStreamSynchronize(stream);
+                stbi_image_free(data);
+            }
+        }
+
     } // namespace
 
     PipelinedImageLoader::PipelinedImageLoader(PipelinedLoaderConfig config)
@@ -664,67 +702,102 @@ namespace lfs::io {
 
             try {
                 auto& nvcodec = get_nvcodec_loader();
+                auto enqueue_cold_fallback = [&](PrefetchedImage&& item) {
+                    item.is_cache_hit = false;
+                    item.needs_processing = true;
+                    if (item.raw_bytes.empty()) {
+                        try {
+                            item.raw_bytes = read_file(item.path);
+                        } catch (...) {
+                            // Clean up pending_pairs_ to prevent memory leak
+                            std::lock_guard<std::mutex> lock(pending_pairs_mutex_);
+                            if (item.is_mask) {
+                                if (auto it = pending_pairs_.find(item.sequence_id); it != pending_pairs_.end()) {
+                                    it->second.mask_expected = false;
+                                    if (it->second.image.has_value()) {
+                                        output_queue_.push({item.sequence_id, std::move(*it->second.image),
+                                                            std::nullopt, it->second.image_stream, nullptr});
+                                        pending_pairs_.erase(it);
+                                    }
+                                }
+                            } else {
+                                pending_pairs_.erase(item.sequence_id);
+                                in_flight_.fetch_sub(1, std::memory_order_acq_rel);
+                            }
+                            return;
+                        }
+                    }
+                    cold_queue_.push(std::move(item));
+                };
 
+                // Decode RGB images in one batched call to reduce per-image sync and host-copy overhead.
+                std::vector<size_t> rgb_indices;
+                std::vector<std::pair<const uint8_t*, size_t>> rgb_spans;
+                rgb_indices.reserve(batch.size());
+                rgb_spans.reserve(batch.size());
                 for (size_t i = 0; i < batch.size(); ++i) {
+                    if (batch[i].is_mask) {
+                        continue;
+                    }
+                    if (!batch[i].jpeg_data || batch[i].jpeg_data->empty()) {
+                        LOG_WARN("[PipelinedImageLoader] Empty JPEG payload for {}",
+                                 lfs::core::path_to_utf8(batch[i].path));
+                        enqueue_cold_fallback(std::move(batch[i]));
+                        continue;
+                    }
+                    rgb_indices.push_back(i);
+                    rgb_spans.emplace_back(batch[i].jpeg_data->data(), batch[i].jpeg_data->size());
+                }
+
+                if (!rgb_spans.empty()) {
                     try {
-                        std::vector<uint8_t> jpeg_data(*batch[i].jpeg_data);
-
-                        if (batch[i].is_mask) {
-                            auto mask_tensor = nvcodec.load_image_from_memory_gpu(
-                                jpeg_data, 1, 0, decode_stream, DecodeFormat::Grayscale);
-
-                            if (!mask_tensor.is_valid() || mask_tensor.numel() == 0) {
-                                LOG_WARN("[PipelinedImageLoader] GPU mask decode failed for {}",
-                                         lfs::core::path_to_utf8(batch[i].path));
-                                throw std::runtime_error("Invalid mask tensor");
-                            }
-
-                            if (decode_stream != nullptr) {
-                                mask_tensor.set_stream(decode_stream);
-                            }
-                            try_complete_pair(batch[i].sequence_id, std::nullopt, std::move(mask_tensor), nullptr, decode_stream);
-
-                        } else {
-                            auto tensor = nvcodec.load_image_from_memory_gpu(jpeg_data, 1, 0, decode_stream);
-
+                        auto decoded_batch = nvcodec.batch_decode_from_spans(rgb_spans, decode_stream);
+                        for (size_t j = 0; j < rgb_indices.size(); ++j) {
+                            auto& item = batch[rgb_indices[j]];
+                            auto tensor = (j < decoded_batch.size()) ? std::move(decoded_batch[j]) : lfs::core::Tensor();
                             if (!tensor.is_valid() || tensor.numel() == 0) {
-                                LOG_WARN("[PipelinedImageLoader] GPU decode failed for {}",
-                                         lfs::core::path_to_utf8(batch[i].path));
-                                throw std::runtime_error("Invalid tensor");
+                                LOG_WARN("[PipelinedImageLoader] GPU batch decode failed for {}",
+                                         lfs::core::path_to_utf8(item.path));
+                                enqueue_cold_fallback(std::move(item));
+                                continue;
                             }
-
                             if (decode_stream != nullptr) {
                                 tensor.set_stream(decode_stream);
                             }
-                            try_complete_pair(batch[i].sequence_id, std::move(tensor), std::nullopt, decode_stream, nullptr);
+                            try_complete_pair(item.sequence_id, std::move(tensor), std::nullopt, decode_stream, nullptr);
                         }
                     } catch (const std::exception&) {
-                        auto& item = batch[i];
-                        item.is_cache_hit = false;
-                        item.needs_processing = true;
-                        if (item.raw_bytes.empty()) {
-                            try {
-                                item.raw_bytes = read_file(item.path);
-                            } catch (...) {
-                                // Clean up pending_pairs_ to prevent memory leak
-                                std::lock_guard<std::mutex> lock(pending_pairs_mutex_);
-                                if (item.is_mask) {
-                                    if (auto it = pending_pairs_.find(item.sequence_id); it != pending_pairs_.end()) {
-                                        it->second.mask_expected = false;
-                                        if (it->second.image.has_value()) {
-                                            output_queue_.push({item.sequence_id, std::move(*it->second.image),
-                                                                std::nullopt, it->second.image_stream, nullptr});
-                                            pending_pairs_.erase(it);
-                                        }
-                                    }
-                                } else {
-                                    pending_pairs_.erase(item.sequence_id);
-                                    in_flight_.fetch_sub(1, std::memory_order_acq_rel);
-                                }
-                                continue;
-                            }
+                        for (size_t idx : rgb_indices) {
+                            enqueue_cold_fallback(std::move(batch[idx]));
                         }
-                        cold_queue_.push(std::move(item));
+                    }
+                }
+
+                // Decode masks independently (grayscale path).
+                for (size_t i = 0; i < batch.size(); ++i) {
+                    if (!batch[i].is_mask) {
+                        continue;
+                    }
+                    try {
+                        if (!batch[i].jpeg_data || batch[i].jpeg_data->empty()) {
+                            throw std::runtime_error("Empty mask JPEG payload");
+                        }
+                        const auto& jpeg_data = *batch[i].jpeg_data;
+                        auto mask_tensor = nvcodec.load_image_from_memory_gpu(
+                            jpeg_data, 1, 0, decode_stream, DecodeFormat::Grayscale);
+
+                        if (!mask_tensor.is_valid() || mask_tensor.numel() == 0) {
+                            LOG_WARN("[PipelinedImageLoader] GPU mask decode failed for {}",
+                                     lfs::core::path_to_utf8(batch[i].path));
+                            throw std::runtime_error("Invalid mask tensor");
+                        }
+
+                        if (decode_stream != nullptr) {
+                            mask_tensor.set_stream(decode_stream);
+                        }
+                        try_complete_pair(batch[i].sequence_id, std::nullopt, std::move(mask_tensor), nullptr, decode_stream);
+                    } catch (const std::exception&) {
+                        enqueue_cold_fallback(std::move(batch[i]));
                     }
                 }
 
@@ -821,12 +894,7 @@ namespace lfs::io {
                         img_data, lfs::core::TensorShape({H, W, 4}),
                         lfs::core::Device::CPU, lfs::core::DataType::UInt8);
                     auto gpu_uint8 = cpu_tensor.to(lfs::core::Device::CUDA, decode_stream);
-                    if (decode_stream != nullptr) {
-                        if (const cudaError_t err = cudaStreamSynchronize(decode_stream); err != cudaSuccess) {
-                            throw std::runtime_error(std::string("CUDA stream sync failed: ") + cudaGetErrorString(err));
-                        }
-                    }
-                    lfs::core::free_image(img_data);
+                    free_lfs_image_async(img_data, decode_stream);
 
                     auto rgb = lfs::core::Tensor::zeros(
                         lfs::core::TensorShape({3, H, W}),
@@ -838,13 +906,6 @@ namespace lfs::io {
                     cuda::launch_uint8_rgba_split_to_float32_rgb_and_alpha(
                         gpu_uint8.ptr<uint8_t>(), rgb.ptr<float>(), alpha.ptr<float>(),
                         H, W, decode_stream);
-
-                    if (decode_stream != nullptr) {
-                        if (const cudaError_t err = cudaStreamSynchronize(decode_stream); err != cudaSuccess) {
-                            throw std::runtime_error(std::string("CUDA stream sync failed after RGBA split: ") +
-                                                     cudaGetErrorString(err));
-                        }
-                    }
                     gpu_uint8 = lfs::core::Tensor();
 
                     float* const alpha_ptr = alpha.ptr<float>();
@@ -862,12 +923,6 @@ namespace lfs::io {
                         const auto alpha_src = alpha;
                         rgb = lfs::core::undistort_image(rgb_src, scaled, decode_stream);
                         alpha = lfs::core::undistort_mask(alpha_src, scaled, decode_stream);
-                        if (decode_stream != nullptr) {
-                            if (const cudaError_t err = cudaStreamSynchronize(decode_stream); err != cudaSuccess) {
-                                throw std::runtime_error(std::string("CUDA stream sync failed after RGBA undistort: ") +
-                                                         cudaGetErrorString(err));
-                            }
-                        }
                     }
 
                     if (is_nvcodec_available()) {
@@ -933,12 +988,7 @@ namespace lfs::io {
                             gray_data, lfs::core::TensorShape({static_cast<size_t>(src_h), static_cast<size_t>(src_w)}),
                             lfs::core::Device::CPU, lfs::core::DataType::UInt8);
                         const auto gpu_uint8 = cpu_tensor.to(lfs::core::Device::CUDA, decode_stream);
-                        if (decode_stream != nullptr) {
-                            if (const cudaError_t err = cudaStreamSynchronize(decode_stream); err != cudaSuccess) {
-                                throw std::runtime_error(std::string("CUDA stream sync failed: ") + cudaGetErrorString(err));
-                            }
-                        }
-                        stbi_image_free(gray_data);
+                        free_stbi_image_async(gray_data, decode_stream);
 
                         if (target_w != src_w || target_h != src_h) {
                             mask_tensor = lfs::core::lanczos_resize_grayscale(gpu_uint8, target_h, target_w, 2, decode_stream);
@@ -948,13 +998,6 @@ namespace lfs::io {
                                 lfs::core::Device::CUDA, lfs::core::DataType::Float32);
                             cuda::launch_uint8_hw_to_float32_hw(
                                 gpu_uint8.ptr<uint8_t>(), mask_tensor.ptr<float>(), target_h, target_w, decode_stream);
-                        }
-
-                        if (decode_stream != nullptr) {
-                            if (const cudaError_t err = cudaStreamSynchronize(decode_stream); err != cudaSuccess) {
-                                throw std::runtime_error(std::string("CUDA stream sync failed after mask uint8 conversion: ") +
-                                                         cudaGetErrorString(err));
-                            }
                         }
                     }
 
@@ -974,12 +1017,6 @@ namespace lfs::io {
                             static_cast<int>(W), static_cast<int>(H));
                         const auto mask_src = mask_tensor;
                         mask_tensor = lfs::core::undistort_mask(mask_src, scaled, decode_stream);
-                        if (decode_stream != nullptr) {
-                            if (const cudaError_t err = cudaStreamSynchronize(decode_stream); err != cudaSuccess) {
-                                throw std::runtime_error(std::string("CUDA stream sync failed after mask undistort: ") +
-                                                         cudaGetErrorString(err));
-                            }
-                        }
                     }
 
                     if (is_nvcodec_available()) {
@@ -1027,12 +1064,7 @@ namespace lfs::io {
                             lfs::core::Device::CPU, lfs::core::DataType::UInt8);
 
                         auto gpu_uint8 = cpu_tensor.to(lfs::core::Device::CUDA, decode_stream);
-                        if (decode_stream != nullptr) {
-                            if (const cudaError_t err = cudaStreamSynchronize(decode_stream); err != cudaSuccess) {
-                                throw std::runtime_error(std::string("CUDA stream sync failed: ") + cudaGetErrorString(err));
-                            }
-                        }
-                        lfs::core::free_image(img_data);
+                        free_lfs_image_async(img_data, decode_stream);
 
                         decoded = lfs::core::Tensor::zeros(
                             lfs::core::TensorShape({C, H, W}),
@@ -1042,12 +1074,6 @@ namespace lfs::io {
                             reinterpret_cast<const uint8_t*>(gpu_uint8.data_ptr()),
                             reinterpret_cast<float*>(decoded.data_ptr()),
                             H, W, C, decode_stream);
-                        if (decode_stream != nullptr) {
-                            if (const cudaError_t err = cudaStreamSynchronize(decode_stream); err != cudaSuccess) {
-                                throw std::runtime_error(std::string("CUDA stream sync failed after image uint8 conversion: ") +
-                                                         cudaGetErrorString(err));
-                            }
-                        }
                         gpu_uint8 = lfs::core::Tensor();
                     }
 
@@ -1058,12 +1084,6 @@ namespace lfs::io {
                             static_cast<int>(decoded.shape()[1]));
                         const auto decoded_src = decoded;
                         decoded = lfs::core::undistort_image(decoded_src, scaled, decode_stream);
-                        if (decode_stream != nullptr) {
-                            if (const cudaError_t err = cudaStreamSynchronize(decode_stream); err != cudaSuccess) {
-                                throw std::runtime_error(std::string("CUDA stream sync failed after image undistort: ") +
-                                                         cudaGetErrorString(err));
-                            }
-                        }
                     }
 
                     if (is_nvcodec_available()) {
@@ -1101,24 +1121,13 @@ namespace lfs::io {
                             img_data, lfs::core::TensorShape({H, W, C}),
                             lfs::core::Device::CPU, lfs::core::DataType::UInt8);
                         auto gpu_uint8 = cpu_tensor.to(lfs::core::Device::CUDA, decode_stream);
-                        if (decode_stream != nullptr) {
-                            if (const cudaError_t err = cudaStreamSynchronize(decode_stream); err != cudaSuccess) {
-                                throw std::runtime_error(std::string("CUDA stream sync failed: ") + cudaGetErrorString(err));
-                            }
-                        }
-                        lfs::core::free_image(img_data);
+                        free_lfs_image_async(img_data, decode_stream);
 
                         auto decoded = lfs::core::Tensor::zeros(
                             lfs::core::TensorShape({C, H, W}),
                             lfs::core::Device::CUDA, lfs::core::DataType::Float32);
                         cuda::launch_uint8_hwc_to_float32_chw(
                             gpu_uint8.ptr<uint8_t>(), decoded.ptr<float>(), H, W, C, decode_stream);
-                        if (decode_stream != nullptr) {
-                            if (const cudaError_t err = cudaStreamSynchronize(decode_stream); err != cudaSuccess) {
-                                throw std::runtime_error(std::string("CUDA stream sync failed after RGB fallback uint8 conversion: ") +
-                                                         cudaGetErrorString(err));
-                            }
-                        }
 
                         {
                             std::lock_guard<std::mutex> lock(pending_pairs_mutex_);
