@@ -8,8 +8,35 @@
 #include "kernels_forward.cuh"
 #include "rasterization_config.h"
 #include "utils.h"
+#include <cassert>
 #include <cub/cub.cuh>
 #include <functional>
+
+namespace {
+
+    struct PinnedReadbackBuffer {
+        uint32_t* ptr = nullptr;
+
+        PinnedReadbackBuffer() {
+            cudaError_t err = cudaMallocHost(&ptr, 3 * sizeof(uint32_t));
+            assert(err == cudaSuccess && "Failed to allocate pinned readback buffer");
+        }
+
+        ~PinnedReadbackBuffer() {
+            if (ptr)
+                cudaFreeHost(ptr);
+        }
+
+        PinnedReadbackBuffer(const PinnedReadbackBuffer&) = delete;
+        PinnedReadbackBuffer& operator=(const PinnedReadbackBuffer&) = delete;
+    };
+
+    PinnedReadbackBuffer& get_pinned_readback() {
+        static thread_local PinnedReadbackBuffer buf;
+        return buf;
+    }
+
+} // namespace
 
 // sorting is done separately for depth and tile as proposed in https://github.com/m-schuetz/Splatshop
 std::tuple<int, int, int, int, int> fast_lfs::rasterization::forward(
@@ -68,8 +95,8 @@ std::tuple<int, int, int, int, int> fast_lfs::rasterization::forward(
     char* per_primitive_buffers_blob = per_primitive_buffers_func(required<PerPrimitiveBuffers>(n_primitives));
     PerPrimitiveBuffers per_primitive_buffers = PerPrimitiveBuffers::from_blob(per_primitive_buffers_blob, n_primitives);
 
-    cudaMemset(per_primitive_buffers.n_visible_primitives, 0, sizeof(uint));
-    cudaMemset(per_primitive_buffers.n_instances, 0, sizeof(uint));
+    cudaMemsetAsync(per_primitive_buffers.n_visible_primitives, 0, sizeof(uint), nullptr);
+    cudaMemsetAsync(per_primitive_buffers.n_instances, 0, sizeof(uint), nullptr);
 
     // Preprocess primitives
     kernels::forward::preprocess_cu<<<div_round_up(n_primitives, config::block_size_preprocess), config::block_size_preprocess>>>(
@@ -106,10 +133,12 @@ std::tuple<int, int, int, int, int> fast_lfs::rasterization::forward(
         mip_filter);
     CHECK_CUDA(config::debug, "preprocess")
 
-    int n_visible_primitives;
-    cudaMemcpy(&n_visible_primitives, per_primitive_buffers.n_visible_primitives, sizeof(uint), cudaMemcpyDeviceToHost);
-    int n_instances;
-    cudaMemcpy(&n_instances, per_primitive_buffers.n_instances, sizeof(uint), cudaMemcpyDeviceToHost);
+    auto& readback = get_pinned_readback();
+    cudaMemcpyAsync(&readback.ptr[0], per_primitive_buffers.n_visible_primitives, sizeof(uint), cudaMemcpyDeviceToHost, nullptr);
+    cudaMemcpyAsync(&readback.ptr[1], per_primitive_buffers.n_instances, sizeof(uint), cudaMemcpyDeviceToHost, nullptr);
+    cudaStreamSynchronize(nullptr);
+    int n_visible_primitives = static_cast<int>(readback.ptr[0]);
+    int n_instances = static_cast<int>(readback.ptr[1]);
 
     const int alloc_instances = std::max(n_instances, 1);
     char* per_instance_buffers_blob = per_instance_buffers_func(required<PerInstanceBuffers>(alloc_instances));
@@ -197,8 +226,9 @@ std::tuple<int, int, int, int, int> fast_lfs::rasterization::forward(
     CHECK_CUDA(config::debug, "cub::DeviceScan::InclusiveSum (Bucket Counts)")
 
     // Get number of buckets
-    int n_buckets;
-    cudaMemcpy(&n_buckets, per_tile_buffers.bucket_offsets + n_tiles - 1, sizeof(uint), cudaMemcpyDeviceToHost);
+    cudaMemcpyAsync(&readback.ptr[2], per_tile_buffers.bucket_offsets + n_tiles - 1, sizeof(uint), cudaMemcpyDeviceToHost, nullptr);
+    cudaStreamSynchronize(nullptr);
+    int n_buckets = static_cast<int>(readback.ptr[2]);
 
     const int alloc_buckets = std::max(n_buckets, 1);
     char* per_bucket_buffers_blob = per_bucket_buffers_func(required<PerBucketBuffers>(alloc_buckets));

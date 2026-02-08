@@ -59,6 +59,10 @@ namespace lfs::core {
                 cuMemAddressFree(arena.d_ptr, arena.virtual_size);
             }
 
+            if (arena.frame_done_event) {
+                cudaEventDestroy(arena.frame_done_event);
+            }
+
             // Free fallback buffer if exists
             if (arena.fallback_buffer) {
                 cudaFree(arena.fallback_buffer);
@@ -136,9 +140,19 @@ namespace lfs::core {
 
         uint64_t frame_id = frame_counter_.fetch_add(1, std::memory_order_relaxed);
 
-        // Synchronize to ensure previous frame's GPU work is complete
-        // before we reset the arena offset and start overwriting memory
-        cudaDeviceSynchronize();
+        // GPU-side wait: only the default stream waits for the previous frame's
+        // event — the CPU proceeds immediately and other streams (e.g. data loader
+        // decode) keep running.
+        {
+            std::lock_guard<std::mutex> lock(arena_mutex_);
+            int device;
+            if (cudaGetDevice(&device) == cudaSuccess) {
+                auto it = device_arenas_.find(device);
+                if (it != device_arenas_.end() && it->second && it->second->frame_done_event) {
+                    cudaStreamWaitEvent(nullptr, it->second->frame_done_event, 0);
+                }
+            }
+        }
 
         // CRITICAL FIX: Reset arena offset at the beginning of each frame!
         int device;
@@ -179,6 +193,18 @@ namespace lfs::core {
     void RasterizerMemoryArena::end_frame(uint64_t frame_id, bool from_rendering) {
         if (!from_rendering) {
             active_training_frames_.fetch_sub(1, std::memory_order_release);
+        }
+
+        // Record event so next begin_frame() can do a GPU-side wait
+        {
+            std::lock_guard<std::mutex> lock(arena_mutex_);
+            int dev;
+            if (cudaGetDevice(&dev) == cudaSuccess) {
+                auto it = device_arenas_.find(dev);
+                if (it != device_arenas_.end() && it->second && it->second->frame_done_event) {
+                    cudaEventRecord(it->second->frame_done_event, nullptr);
+                }
+            }
         }
 
         // Track peak usage before resetting
@@ -380,6 +406,7 @@ namespace lfs::core {
             arena_ptr = std::make_unique<Arena>();
             arena_ptr->device = device;
             arena_ptr->last_log_time = std::chrono::steady_clock::now();
+            cudaEventCreateWithFlags(&arena_ptr->frame_done_event, cudaEventDisableTiming);
 
             // Set device before allocating
             cudaSetDevice(device);

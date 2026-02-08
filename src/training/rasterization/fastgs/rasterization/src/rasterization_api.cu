@@ -320,8 +320,8 @@ namespace fast_lfs::rasterization {
         // Zero out helper buffers
         const size_t grad_mean2d_size = n_primitives * 2 * sizeof(float);
         const size_t grad_conic_size = n_primitives * 3 * sizeof(float);
-        cudaMemset(grad_mean2d_helper, 0, grad_mean2d_size);
-        cudaMemset(grad_conic_helper, 0, grad_conic_size);
+        cudaMemsetAsync(grad_mean2d_helper, 0, grad_mean2d_size, nullptr);
+        cudaMemsetAsync(grad_conic_helper, 0, grad_conic_size, nullptr);
 
         // NOTE: Output gradients are NOT zeroed here to support tile-based training
         // where gradients accumulate across multiple backward calls (one per tile).
@@ -336,7 +336,7 @@ namespace fast_lfs::rasterization {
         // cudaMemset(grad_sh_coefficients_rest_ptr, 0, n_primitives * total_bases_sh_rest * 3 * sizeof(float));
 
         if (grad_w2c_ptr) {
-            cudaMemset(grad_w2c_ptr, 0, 4 * 4 * sizeof(float));
+            cudaMemsetAsync(grad_w2c_ptr, 0, 4 * 4 * sizeof(float), nullptr);
         }
 
         try {

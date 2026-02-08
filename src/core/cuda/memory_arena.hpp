@@ -93,6 +93,9 @@ namespace lfs::core {
             std::atomic<size_t> total_allocated{0};
             std::atomic<size_t> realloc_count{0};
             std::chrono::steady_clock::time_point last_log_time;
+
+            // Event recorded at end_frame() — begin_frame() waits GPU-side
+            cudaEvent_t frame_done_event = nullptr;
         };
 
         std::unordered_map<int, std::unique_ptr<Arena>> device_arenas_;
