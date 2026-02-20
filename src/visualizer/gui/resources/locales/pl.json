@@ -858,6 +858,8 @@
     "active": "Aktywne",
     "inactive": "Nieaktywne",
     "receivers": "Odbiorcy",
-    "error": "Błąd"
+    "error": "Błąd",
+    "fps_limit": "Limit FPS",
+    "output_resolution": "Rozdzielczość wyjściowa"
   }
 }

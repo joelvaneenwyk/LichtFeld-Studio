@@ -858,6 +858,8 @@
     "active": "活跃",
     "inactive": "未活跃",
     "receivers": "接收者",
-    "error": "错误"
+    "error": "错误",
+    "fps_limit": "FPS限制",
+    "output_resolution": "输出分辨率"
   }
 }

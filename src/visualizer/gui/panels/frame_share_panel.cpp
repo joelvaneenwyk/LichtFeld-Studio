@@ -19,6 +19,8 @@ namespace lfs::vis::gui::panels {
         : manager_(manager) {
         assert(manager_);
         std::strncpy(name_buf_, manager_->getSenderName().c_str(), sizeof(name_buf_) - 1);
+        fps_limit_ = manager_->getTargetFps();
+        resolution_index_ = static_cast<int>(manager_->getOutputResolution());
     }
 
     void FrameSharePanel::draw(const PanelDrawContext& /*ctx*/) {
@@ -68,6 +70,28 @@ namespace lfs::vis::gui::panels {
         if (ImGui::InputText("##sender_name", name_buf_, sizeof(name_buf_),
                              ImGuiInputTextFlags_EnterReturnsTrue)) {
             manager_->setSenderName(name_buf_);
+        }
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted(LOC(FrameShare::FPS_LIMIT));
+        ImGui::SetNextItemWidth(-1);
+        if (fps_limit_ < 1.0f) {
+            ImGui::SliderFloat("##fps_limit", &fps_limit_, 0.0f, 120.0f, "Unlimited");
+        } else {
+            ImGui::SliderFloat("##fps_limit", &fps_limit_, 0.0f, 120.0f, "%.0f");
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            if (fps_limit_ < 1.0f)
+                fps_limit_ = 0.0f;
+            manager_->setTargetFps(fps_limit_);
+        }
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted(LOC(FrameShare::OUTPUT_RESOLUTION));
+        ImGui::SetNextItemWidth(-1);
+        static constexpr const char* resolution_labels[] = {"Native", "720p", "1080p", "1440p"};
+        if (ImGui::Combo("##output_resolution", &resolution_index_, resolution_labels, IM_ARRAYSIZE(resolution_labels))) {
+            manager_->setOutputResolution(static_cast<FrameShareResolution>(resolution_index_));
         }
 
         ImGui::Separator();

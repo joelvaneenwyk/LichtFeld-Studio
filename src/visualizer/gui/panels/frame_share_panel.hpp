@@ -21,6 +21,8 @@ namespace lfs::vis::gui::panels {
     private:
         FrameShareManager* manager_;
         char name_buf_[256] = {};
+        float fps_limit_ = 0.0f;
+        int resolution_index_ = 0;
     };
 
 } // namespace lfs::vis::gui::panels

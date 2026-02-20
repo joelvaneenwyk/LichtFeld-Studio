@@ -180,20 +180,23 @@ static void lfs_video_tick(void* data, float) {
     ctx->last_frame_id = current_frame;
 }
 
-static void lfs_video_render(void* data, gs_effect_t* effect) {
+static void lfs_video_render(void* data, gs_effect_t*) {
     auto* ctx = static_cast<LichtfeldShmSource*>(data);
     if (!ctx->texture)
         return;
 
-    effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
+    gs_blend_state_push();
+    gs_blend_function(GS_BLEND_SRCALPHA, GS_BLEND_INVSRCALPHA);
+
+    gs_effect_t* effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
     gs_technique_t* tech = gs_effect_get_technique(effect, "Draw");
     gs_technique_begin(tech);
     gs_technique_begin_pass(tech, 0);
-
     obs_source_draw(ctx->texture, 0, 0, 0, 0, false);
-
     gs_technique_end_pass(tech);
     gs_technique_end(tech);
+
+    gs_blend_state_pop();
 }
 
 struct obs_source_info lichtfeld_shm_source = {

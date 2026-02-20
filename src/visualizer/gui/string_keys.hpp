@@ -965,6 +965,8 @@ namespace lichtfeld::Strings {
         inline constexpr const char* INACTIVE = "frame_share.inactive";
         inline constexpr const char* RECEIVERS = "frame_share.receivers";
         inline constexpr const char* ERROR_STATE = "frame_share.error";
+        inline constexpr const char* FPS_LIMIT = "frame_share.fps_limit";
+        inline constexpr const char* OUTPUT_RESOLUTION = "frame_share.output_resolution";
     } // namespace FrameShare
 
 } // namespace lichtfeld::Strings

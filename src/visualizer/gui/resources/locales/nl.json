@@ -858,6 +858,8 @@
     "active": "Actief",
     "inactive": "Inactief",
     "receivers": "Ontvanger(s)",
-    "error": "Fout"
+    "error": "Fout",
+    "fps_limit": "FPS-limiet",
+    "output_resolution": "Uitvoerresolutie"
   }
 }

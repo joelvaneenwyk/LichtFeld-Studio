@@ -858,6 +858,8 @@
     "active": "활성",
     "inactive": "비활성",
     "receivers": "수신자",
-    "error": "오류"
+    "error": "오류",
+    "fps_limit": "FPS 제한",
+    "output_resolution": "출력 해상도"
   }
 }
