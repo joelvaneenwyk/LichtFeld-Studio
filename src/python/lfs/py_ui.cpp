@@ -11,6 +11,7 @@
 #include "core/logger.hpp"
 #include "core/property_registry.hpp"
 #include "core/scene.hpp"
+#include "gui/rml_menu_bar.hpp"
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/windows_utils.hpp"
 #include "internal/resource_paths.hpp"
@@ -19,6 +20,7 @@
 #include "py_keymap.hpp"
 #include "py_params.hpp"
 #include "py_prop_registry.hpp"
+#include "py_rml.hpp"
 #include "py_signals.hpp"
 #include "py_tensor.hpp"
 #include "py_uilist.hpp"
@@ -1650,6 +1652,16 @@ namespace lfs::python {
 
         const bool can_execute = vis::op::operators().poll(operator_id);
 
+        if (collecting_ && collect_target_) {
+            vis::gui::MenuItemDesc item;
+            item.type = vis::gui::MenuItemDesc::Type::Operator;
+            item.label = btn_text;
+            item.operator_id = operator_id;
+            item.enabled = can_execute;
+            collect_target_->items.push_back(std::move(item));
+            return nb::cast(PyOperatorProperties(operator_id));
+        }
+
         bool clicked = false;
         if (menu_depth_ > 0) {
             clicked = ImGui::MenuItem(btn_text.c_str(), nullptr, false, can_execute);
@@ -2213,6 +2225,15 @@ namespace lfs::python {
         return {changed, {c[0], c[1], c[2], c[3]}};
     }
 
+    std::tuple<bool, std::tuple<float, float, float>> PyUILayout::color_picker3(
+        const std::string& label, std::tuple<float, float, float> color) {
+        float c[3] = {std::get<0>(color), std::get<1>(color), std::get<2>(color)};
+        bool changed = ImGui::ColorPicker3(label.c_str(), c,
+                                           ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_DisplayHSV | ImGuiColorEditFlags_DisplayHex |
+                                               ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_PickerHueBar);
+        return {changed, {c[0], c[1], c[2]}};
+    }
+
     bool PyUILayout::color_button(const std::string& label, nb::object color,
                                   std::tuple<float, float> size) {
         return ImGui::ColorButton(label.c_str(), tuple_to_imvec4(color), 0,
@@ -2264,6 +2285,12 @@ namespace lfs::python {
 
     // Layout
     void PyUILayout::separator() {
+        if (collecting_ && collect_target_) {
+            vis::gui::MenuItemDesc item;
+            item.type = vis::gui::MenuItemDesc::Type::Separator;
+            collect_target_->items.push_back(std::move(item));
+            return;
+        }
         ImGui::Separator();
     }
 
@@ -2435,10 +2462,29 @@ namespace lfs::python {
     }
 
     bool PyUILayout::menu_item(const std::string& label, bool enabled, bool selected) {
+        if (collecting_ && collect_target_) {
+            vis::gui::MenuItemDesc item;
+            item.type = vis::gui::MenuItemDesc::Type::Item;
+            item.label = label;
+            item.enabled = enabled;
+            item.selected = selected;
+            const int idx = collect_callback_index_++;
+            item.callback_index = idx;
+            collect_target_->items.push_back(std::move(item));
+            return execute_at_index_ == idx;
+        }
         return ImGui::MenuItem(label.c_str(), nullptr, selected, enabled);
     }
 
     bool PyUILayout::begin_menu(const std::string& label) {
+        if (collecting_ && collect_target_) {
+            vis::gui::MenuItemDesc item;
+            item.type = vis::gui::MenuItemDesc::Type::SubMenuBegin;
+            item.label = label;
+            collect_target_->items.push_back(std::move(item));
+            ++menu_depth_;
+            return true;
+        }
         if (ImGui::BeginMenu(label.c_str())) {
             ++menu_depth_;
             return true;
@@ -2449,6 +2495,12 @@ namespace lfs::python {
     void PyUILayout::end_menu() {
         assert(menu_depth_ > 0);
         --menu_depth_;
+        if (collecting_ && collect_target_) {
+            vis::gui::MenuItemDesc item;
+            item.type = vis::gui::MenuItemDesc::Type::SubMenuEnd;
+            collect_target_->items.push_back(std::move(item));
+            return;
+        }
         ImGui::EndMenu();
     }
 
@@ -2487,6 +2539,11 @@ namespace lfs::python {
 
     std::tuple<float, float> PyUILayout::get_cursor_screen_pos() const {
         const ImVec2 pos = ImGui::GetCursorScreenPos();
+        return {pos.x, pos.y};
+    }
+
+    std::tuple<float, float> PyUILayout::get_mouse_pos() const {
+        const ImVec2 pos = ImGui::GetIO().MousePos;
         return {pos.x, pos.y};
     }
 
@@ -2716,10 +2773,32 @@ namespace lfs::python {
     }
 
     bool PyUILayout::menu_item_toggle(const std::string& label, const std::string& shortcut, bool selected) {
+        if (collecting_ && collect_target_) {
+            vis::gui::MenuItemDesc item;
+            item.type = vis::gui::MenuItemDesc::Type::Toggle;
+            item.label = label;
+            item.shortcut = shortcut;
+            item.selected = selected;
+            const int idx = collect_callback_index_++;
+            item.callback_index = idx;
+            collect_target_->items.push_back(std::move(item));
+            return execute_at_index_ == idx;
+        }
         return ImGui::MenuItem(label.c_str(), shortcut.c_str(), selected);
     }
 
     bool PyUILayout::menu_item_shortcut(const std::string& label, const std::string& shortcut, bool enabled) {
+        if (collecting_ && collect_target_) {
+            vis::gui::MenuItemDesc item;
+            item.type = vis::gui::MenuItemDesc::Type::ShortcutItem;
+            item.label = label;
+            item.shortcut = shortcut;
+            item.enabled = enabled;
+            const int idx = collect_callback_index_++;
+            item.callback_index = idx;
+            collect_target_->items.push_back(std::move(item));
+            return execute_at_index_ == idx;
+        }
         return ImGui::MenuItem(label.c_str(), shortcut.c_str(), false, enabled);
     }
 
@@ -3160,6 +3239,7 @@ namespace lfs::python {
         register_ui_menus(m);
         register_ui_operators(m);
         register_ui_modals(m);
+        register_rml_bindings(m);
 
         // Hot-reload redraw request functions
         m.def(
@@ -3356,6 +3436,7 @@ namespace lfs::python {
             // Color
             .def("color_edit3", &PyUILayout::color_edit3, nb::arg("label"), nb::arg("color"), "Draw an RGB color editor, returns (changed, color)")
             .def("color_edit4", &PyUILayout::color_edit4, nb::arg("label"), nb::arg("color"), "Draw an RGBA color editor, returns (changed, color)")
+            .def("color_picker3", &PyUILayout::color_picker3, nb::arg("label"), nb::arg("color"), "Draw a full RGB color picker widget, returns (changed, color)")
             .def("color_button", &PyUILayout::color_button, nb::arg("label"), nb::arg("color"),
                  nb::arg("size") = std::make_tuple(0.0f, 0.0f), "Draw a color swatch button, returns True if clicked")
             // Selection
@@ -3421,6 +3502,7 @@ namespace lfs::python {
             .def("set_scroll_here_y", &PyUILayout::set_scroll_here_y, nb::arg("center_y_ratio") = 0.5f, "Scroll to current cursor Y position")
             // ImDrawList for custom row backgrounds
             .def("get_cursor_screen_pos", &PyUILayout::get_cursor_screen_pos, "Get cursor position in screen coordinates as (x, y)")
+            .def("get_mouse_pos", &PyUILayout::get_mouse_pos, "Get mouse position in screen coordinates as (x, y)")
             .def("get_window_pos", &PyUILayout::get_window_pos, "Get window position in screen coordinates as (x, y)")
             .def("get_window_width", &PyUILayout::get_window_width, "Get current window width in pixels")
             .def("get_text_line_height", &PyUILayout::get_text_line_height, "Get height of a single text line in pixels")
@@ -3463,7 +3545,8 @@ namespace lfs::python {
                                  {0, 0}, {u1, v1}, t, {0, 0, 0, 0});
                 },
                 nb::arg("texture"), nb::arg("size"), nb::arg("tint") = nb::none(), "Draw a DynamicTexture with automatic UV scaling")
-            .def("image_tensor", [](PyUILayout& /*self*/, const std::string& label, PyTensor& tensor, std::tuple<float, float> size, nb::object tint) {
+            .def(
+                "image_tensor", [](PyUILayout& /*self*/, const std::string& label, PyTensor& tensor, std::tuple<float, float> size, nb::object tint) {
                     PyDynamicTexture* tex_ptr = nullptr;
                     {
                         std::lock_guard lock(g_dynamic_textures_mutex);
@@ -4440,6 +4523,19 @@ namespace lfs::python {
         m.def("draw_console_button", &draw_console_button,
               "Draw system console button (C++ implementation)");
 
+        m.def("toggle_system_console", &toggle_system_console,
+              "Toggle system console visibility");
+
+        m.def(
+            "is_windows_platform", []() -> bool {
+#ifdef WIN32
+                return true;
+#else
+                return false;
+#endif
+            },
+            "Returns true on Windows");
+
         m.def("get_pivot_mode", &get_pivot_mode, "Get pivot mode (0=Origin, 1=Bounds)");
 
         m.def("set_pivot_mode", &set_pivot_mode, nb::arg("mode"), "Set pivot mode (0=Origin, 1=Bounds)");
@@ -4606,8 +4702,31 @@ namespace lfs::python {
             if (idname)
                 PyMenuRegistry::instance().draw_menu_bar_entry(idname);
         };
+        bridge.collect_menu_content = [](const char* idname, MenuItemVisitor visitor, void* ctx) {
+            if (!idname)
+                return;
+            auto content = PyMenuRegistry::instance().collect_menu_content(idname);
+            for (const auto& item : content.items) {
+                MenuItemInfo info;
+                info.type = static_cast<int>(item.type);
+                info.label = item.label.c_str();
+                info.operator_id = item.operator_id.c_str();
+                info.shortcut = item.shortcut.c_str();
+                info.enabled = item.enabled;
+                info.selected = item.selected;
+                info.callback_index = item.callback_index;
+                visitor(&info, ctx);
+            }
+        };
+        bridge.execute_menu_callback = [](const char* idname, int idx) {
+            if (idname)
+                PyMenuRegistry::instance().execute_menu_callback(idname, idx);
+        };
         bridge.draw_modals = []() { PyModalRegistry::instance().draw_modals(); };
         bridge.has_modals = []() { return PyModalRegistry::instance().has_open_modals(); };
+
+        if (const auto& enqueue_cb = get_modal_enqueue_callback())
+            PyModalRegistry::instance().set_enqueue_callback(enqueue_cb);
         bridge.has_toolbar = []() { return true; }; // Always true - Python ToolRegistry has builtin tools
         bridge.shutdown_gl_resources = []() { shutdown_dynamic_textures(); };
         bridge.cleanup = []() {

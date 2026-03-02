@@ -276,7 +276,6 @@
     "move_to_root": "Wurzel",
     "images": "Bilder ({}):",
     "no_images": "Keine Bilder geladen.",
-    "use_file_browser": "Verwenden Sie 'Dateibrowser öffnen' um einen Datensatz zu laden.",
     "move_node": "Verschieben: %s",
     "models": "Modelle ({})",
     "filter": "Filter...",
@@ -305,7 +304,8 @@
     "keyframe_easing.ease_in": "Langsam ein",
     "keyframe_easing.ease_out": "Langsam aus",
     "keyframe_easing.ease_in_out": "Langsam ein/aus",
-    "keyframe_label": "Schluesselbild {index}  ({time:.2f}s)"
+    "keyframe_label": "Schluesselbild {index}  ({time:.2f}s)",
+    "search": "Suchen"
   },
   "export": {
     "title": "Exportieren",
@@ -403,6 +403,7 @@
     "scene_panel": "Szenen-Panel",
     "show_console": "Systemkonsole anzeigen",
     "hide_console": "Systemkonsole ausblenden",
+    "console": "Konsole",
     "background": "Hintergrund",
     "color": "Farbe",
     "show_coord_axes": "Koordinatenachsen anzeigen",
@@ -449,7 +450,17 @@
     "add_group": "+ Gruppe hinzufügen",
     "no_selection_groups": "Keine Auswahlgruppen",
     "clear": "Löschen",
-    "mesh": "Mesh"
+    "mesh": "Mesh",
+    "mesh_wireframe": "Drahtgitter",
+    "mesh_wireframe_color": "Drahtgitterfarbe",
+    "mesh_wireframe_width": "Drahtgitterbreite",
+    "mesh_light_intensity": "Lichtintensität",
+    "mesh_ambient": "Umgebungslicht",
+    "mesh_backface_culling": "Rückseitenentfernung",
+    "mesh_shadow_enabled": "Schatten",
+    "mesh_shadow_resolution": "Schattenauflösung",
+    "camera_frustum_scale": "Frustum-Skalierung",
+    "voxel_size": "Voxelgröße"
   },
   "toolbar": {
     "selection": "Auswahl",
@@ -512,20 +523,6 @@
     "appearance": "Erscheinung",
     "line_width": "Linienbreite",
     "instructions": "Enter: Zuschnitt bestätigen | Strg+C: Inhalt kopieren"
-  },
-  "file_browser": {
-    "title": "Dateibrowser",
-    "quick_access": "Schnellzugriff",
-    "current_dir": "Aktuelles Verzeichnis",
-    "home": "Start",
-    "current_path": "Aktueller Pfad: %s",
-    "parent_dir": "../",
-    "directory": "[VERZ]",
-    "selected": "Ausgewählt: %s",
-    "load_dataset": "Datensatz laden",
-    "load_sog": "SOG laden",
-    "load_ply": "PLY laden",
-    "enter_dir": "Verzeichnis öffnen"
   },
   "training_panel": {
     "start_training": "Training starten",
@@ -616,15 +613,6 @@
   "selection_group": {
     "lock": "Sperren",
     "unlock": "Entsperren"
-  },
-  "file_browser_ext": {
-    "dataset": "[Datensatz]",
-    "sog": "[SOG]",
-    "no_file_selected": "Keine Datei ausgewählt",
-    "not_a_dataset": "(Kein Datensatz)",
-    "sog_directory": "(SOG Verzeichnis)",
-    "sog_meta": "(SOG meta.json)",
-    "error": "Fehler:"
   },
   "progress": {
     "loss": "Verlust:",

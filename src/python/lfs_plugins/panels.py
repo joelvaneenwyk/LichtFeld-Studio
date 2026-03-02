@@ -12,13 +12,16 @@ def register_builtin_panels():
 
         # Main panel tabs (Rendering must be first)
         from .rendering_panel import RenderingPanel
-        lf.register_class(RenderingPanel)
+        lf.ui.register_rml_panel(RenderingPanel)
+
+        from .sequencer_panel import SequencerSettingsPanel
+        lf.ui.register_rml_panel(SequencerSettingsPanel)
 
         from .training_panel import TrainingPanel
-        lf.register_class(TrainingPanel)
+        lf.ui.register_rml_panel(TrainingPanel)
 
         from .scene_panel import ScenePanel
-        lf.register_class(ScenePanel)
+        lf.ui.register_rml_panel(ScenePanel)
 
         from .toolbar import GizmoToolbar, UtilityToolbar
         lf.register_class(UtilityToolbar)
@@ -51,11 +54,11 @@ def register_builtin_panels():
         lf.ui.set_panel_enabled("lfs.export", False)
 
         from .about_panel import AboutPanel
-        lf.register_class(AboutPanel)
+        lf.ui.register_rml_panel(AboutPanel)
         lf.ui.set_panel_enabled("lfs.about", False)
 
         from .getting_started_panel import GettingStartedPanel
-        lf.register_class(GettingStartedPanel)
+        lf.ui.register_rml_panel(GettingStartedPanel)
         lf.ui.set_panel_enabled("lfs.getting_started", False)
 
         from .image_preview_panel import ImagePreviewPanel
@@ -70,7 +73,7 @@ def register_builtin_panels():
         lf.register_class(InputSettingsPanel)
         lf.ui.set_panel_enabled("lfs.input_settings", False)
 
-        lf.register_class(PluginMarketplacePanel)
+        lf.ui.register_rml_panel(PluginMarketplacePanel)
         lf.ui.set_panel_enabled("lfs.plugin_marketplace", False)
 
         # Status bar (must be registered last, always visible)

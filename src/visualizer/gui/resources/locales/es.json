@@ -276,7 +276,6 @@
     "move_to_root": "Raíz",
     "images": "Imágenes ({}):",
     "no_images": "No hay imágenes cargadas.",
-    "use_file_browser": "Use 'Abrir Explorador de Archivos' para cargar un dataset.",
     "move_node": "Mover: %s",
     "models": "Modelos ({})",
     "filter": "Filtrar...",
@@ -305,7 +304,8 @@
     "keyframe_easing.ease_in": "Aceleracion suave",
     "keyframe_easing.ease_out": "Desaceleracion suave",
     "keyframe_easing.ease_in_out": "Aceleracion/desaceleracion suave",
-    "keyframe_label": "Fotograma clave {index}  ({time:.2f}s)"
+    "keyframe_label": "Fotograma clave {index}  ({time:.2f}s)",
+    "search": "Buscar"
   },
   "export": {
     "title": "Exportar",
@@ -403,6 +403,7 @@
     "scene_panel": "Panel de Escena",
     "show_console": "Mostrar Consola del Sistema",
     "hide_console": "Ocultar Consola del Sistema",
+    "console": "Consola",
     "background": "Fondo",
     "color": "Color",
     "show_coord_axes": "Mostrar Ejes de Coordenadas",
@@ -449,7 +450,17 @@
     "add_group": "+ Añadir Grupo",
     "no_selection_groups": "Sin grupos de selección",
     "clear": "Limpiar",
-    "mesh": "Malla"
+    "mesh": "Malla",
+    "mesh_wireframe": "Malla de alambre",
+    "mesh_wireframe_color": "Color de malla de alambre",
+    "mesh_wireframe_width": "Ancho de malla de alambre",
+    "mesh_light_intensity": "Intensidad de luz",
+    "mesh_ambient": "Ambiental",
+    "mesh_backface_culling": "Eliminación de caras traseras",
+    "mesh_shadow_enabled": "Sombras",
+    "mesh_shadow_resolution": "Resolución de sombras",
+    "camera_frustum_scale": "Escala de frustum",
+    "voxel_size": "Tamaño de vóxel"
   },
   "toolbar": {
     "selection": "Selección",
@@ -512,20 +523,6 @@
     "appearance": "Apariencia",
     "line_width": "Ancho de Línea",
     "instructions": "Enter: Confirmar recorte | Ctrl+C: Copiar contenido"
-  },
-  "file_browser": {
-    "title": "Explorador de Archivos",
-    "quick_access": "Acceso Rápido",
-    "current_dir": "Directorio Actual",
-    "home": "Inicio",
-    "current_path": "Ruta Actual: %s",
-    "parent_dir": "../",
-    "directory": "[DIR]",
-    "selected": "Seleccionado: %s",
-    "load_dataset": "Cargar Dataset",
-    "load_sog": "Cargar SOG",
-    "load_ply": "Cargar PLY",
-    "enter_dir": "Entrar en Directorio"
   },
   "training_panel": {
     "start_training": "Iniciar Entrenamiento",
@@ -616,15 +613,6 @@
   "selection_group": {
     "lock": "Bloquear",
     "unlock": "Desbloquear"
-  },
-  "file_browser_ext": {
-    "dataset": "[Dataset]",
-    "sog": "[SOG]",
-    "no_file_selected": "No hay archivo seleccionado",
-    "not_a_dataset": "(No es un dataset)",
-    "sog_directory": "(Directorio SOG)",
-    "sog_meta": "(SOG meta.json)",
-    "error": "Error:"
   },
   "progress": {
     "loss": "Pérdida:",

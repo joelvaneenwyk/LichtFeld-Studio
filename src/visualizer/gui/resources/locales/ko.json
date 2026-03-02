@@ -276,7 +276,6 @@
     "move_to_root": "루트",
     "images": "이미지 ({}):",
     "no_images": "이미지가 로드되지 않았습니다.",
-    "use_file_browser": "'파일 브라우저 열기'를 사용하여 데이터셋을 로드하세요.",
     "move_node": "이동: %s",
     "models": "모델 ({})",
     "filter": "필터...",
@@ -305,7 +304,8 @@
     "keyframe_easing.ease_in": "점진적 시작",
     "keyframe_easing.ease_out": "점진적 종료",
     "keyframe_easing.ease_in_out": "점진적 시작/종료",
-    "keyframe_label": "키프레임 {index}  ({time:.2f}s)"
+    "keyframe_label": "키프레임 {index}  ({time:.2f}s)",
+    "search": "검색"
   },
   "export": {
     "title": "내보내기",
@@ -403,6 +403,7 @@
     "scene_panel": "씬 패널",
     "show_console": "시스템 콘솔 표시",
     "hide_console": "시스템 콘솔 숨기기",
+    "console": "콘솔",
     "background": "배경",
     "color": "색상",
     "show_coord_axes": "좌표축 표시",
@@ -449,7 +450,17 @@
     "add_group": "+ 그룹 추가",
     "no_selection_groups": "선택 그룹 없음",
     "clear": "지우기",
-    "mesh": "메시"
+    "mesh": "메시",
+    "mesh_wireframe": "와이어프레임",
+    "mesh_wireframe_color": "와이어프레임 색상",
+    "mesh_wireframe_width": "와이어프레임 두께",
+    "mesh_light_intensity": "조명 강도",
+    "mesh_ambient": "환경광",
+    "mesh_backface_culling": "후면 제거",
+    "mesh_shadow_enabled": "그림자",
+    "mesh_shadow_resolution": "그림자 해상도",
+    "camera_frustum_scale": "절두체 스케일",
+    "voxel_size": "복셀 크기"
   },
   "toolbar": {
     "selection": "선택",
@@ -512,20 +523,6 @@
     "appearance": "외관",
     "line_width": "선 너비",
     "instructions": "Enter: 자르기 확정 | Ctrl+C: 내용 복사"
-  },
-  "file_browser": {
-    "title": "파일 브라우저",
-    "quick_access": "빠른 액세스",
-    "current_dir": "현재 디렉터리",
-    "home": "홈",
-    "current_path": "현재 경로: %s",
-    "parent_dir": "../",
-    "directory": "[디렉터리]",
-    "selected": "선택됨: %s",
-    "load_dataset": "데이터셋 로드",
-    "load_sog": "SOG 로드",
-    "load_ply": "PLY 로드",
-    "enter_dir": "디렉터리 열기"
   },
   "training_panel": {
     "start_training": "학습 시작",
@@ -616,15 +613,6 @@
   "selection_group": {
     "lock": "잠금",
     "unlock": "잠금 해제"
-  },
-  "file_browser_ext": {
-    "dataset": "[데이터셋]",
-    "sog": "[SOG]",
-    "no_file_selected": "선택된 파일 없음",
-    "not_a_dataset": "(데이터셋 아님)",
-    "sog_directory": "(SOG 디렉터리)",
-    "sog_meta": "(SOG meta.json)",
-    "error": "오류:"
   },
   "progress": {
     "loss": "손실:",

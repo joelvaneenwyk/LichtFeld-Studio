@@ -276,7 +276,6 @@
     "move_to_root": "Root",
     "images": "Afbeeldingen ({}):",
     "no_images": "Geen afbeeldingen geladen.",
-    "use_file_browser": "Gebruik 'Open Bestandsbrowser' om een dataset te laden.",
     "move_node": "Verplaats: %s",
     "models": "Modellen ({})",
     "filter": "Filteren...",
@@ -305,7 +304,8 @@
     "keyframe_easing.ease_in": "Langzaam in",
     "keyframe_easing.ease_out": "Langzaam uit",
     "keyframe_easing.ease_in_out": "Langzaam in/uit",
-    "keyframe_label": "Keyframe {index}  ({time:.2f}s)"
+    "keyframe_label": "Keyframe {index}  ({time:.2f}s)",
+    "search": "Zoeken"
   },
   "export": {
     "title": "Exporteren",
@@ -403,6 +403,7 @@
     "scene_panel": "Scène Paneel",
     "show_console": "Toon systeem Console",
     "hide_console": "Verberg systeem Console",
+    "console": "Console",
     "background": "Achtergrond",
     "color": "Kleur",
     "show_coord_axes": "Toon Coördinaat Assen",
@@ -449,7 +450,17 @@
     "add_group": "+ Groep Toevoegen",
     "no_selection_groups": "Geen selectie groepen",
     "clear": "Wissen",
-    "mesh": "Mesh"
+    "mesh": "Mesh",
+    "mesh_wireframe": "Draadmodel",
+    "mesh_wireframe_color": "Draadmodel kleur",
+    "mesh_wireframe_width": "Draadmodel breedte",
+    "mesh_light_intensity": "Lichtintensiteit",
+    "mesh_ambient": "Omgevingslicht",
+    "mesh_backface_culling": "Achtervlak verwijdering",
+    "mesh_shadow_enabled": "Schaduwen",
+    "mesh_shadow_resolution": "Schaduwresolutie",
+    "camera_frustum_scale": "Frustum schaal",
+    "voxel_size": "Voxelgrootte"
   },
   "toolbar": {
     "selection": "Selectie",
@@ -512,20 +523,6 @@
     "appearance": "Uiterlijk",
     "line_width": "Lijndikte",
     "instructions": "Enter: Bijsnijden bevestigen | Ctrl+C: Inhoud kopiëren"
-  },
-  "file_browser": {
-    "title": "Bestandsbrowser",
-    "quick_access": "Snelle Toegang",
-    "current_dir": "Huidige Map",
-    "home": "Home",
-    "current_path": "Huidig Pad: %s",
-    "parent_dir": "../",
-    "directory": "[MAP]",
-    "selected": "Geselecteerd: %s",
-    "load_dataset": "Dataset Laden",
-    "load_sog": "SOG Laden",
-    "load_ply": "PLY Laden",
-    "enter_dir": "Map Openen"
   },
   "training_panel": {
     "start_training": "Start Training",
@@ -616,15 +613,6 @@
   "selection_group": {
     "lock": "Vergrendelen",
     "unlock": "Ontgrendelen"
-  },
-  "file_browser_ext": {
-    "dataset": "[Dataset]",
-    "sog": "[SOG]",
-    "no_file_selected": "Geen bestand geselecteerd",
-    "not_a_dataset": "(Geen dataset)",
-    "sog_directory": "(SOG Map)",
-    "sog_meta": "(SOG meta.json)",
-    "error": "Fout:"
   },
   "progress": {
     "loss": "Verlies:",

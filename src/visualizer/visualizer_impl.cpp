@@ -304,7 +304,6 @@ namespace lfs::vis {
                     return;
                 gui::UIContext ctx{
                     .viewer = viewer,
-                    .file_browser = nullptr,
                     .window_states = nullptr,
                     .editor = python::get_editor_context(),
                     .sequencer_controller = nullptr,
@@ -319,12 +318,25 @@ namespace lfs::vis {
                     return;
                 gui::UIContext ctx{
                     .viewer = viewer,
-                    .file_browser = nullptr,
                     .window_states = gm->getWindowStates(),
                     .editor = python::get_editor_context(),
                     .sequencer_controller = nullptr,
                     .fonts = {}};
                 gui::panels::DrawSystemConsoleButton(ctx); },
+            .toggle_system_console = []() {
+                auto* gm = python::get_gui_manager();
+                if (!gm)
+                    return;
+                auto* viewer = gm->getViewer();
+                if (!viewer)
+                    return;
+                gui::UIContext ctx{
+                    .viewer = viewer,
+                    .window_states = gm->getWindowStates(),
+                    .editor = python::get_editor_context(),
+                    .sequencer_controller = nullptr,
+                    .fonts = {}};
+                gui::panels::ToggleSystemConsole(ctx); },
         });
         callback_cleanup_.add([] { python::set_section_draw_callbacks({}); });
 
@@ -546,10 +558,6 @@ namespace lfs::vis {
         main_loop_->setRenderCallback([this]() { render(); });
         main_loop_->setShutdownCallback([this]() { shutdown(); });
         main_loop_->setShouldCloseCallback([this]() { return allowclose(); });
-
-        gui_manager_->setFileSelectedCallback([this](const std::filesystem::path& path, bool is_dataset) {
-            lfs::core::events::cmd::LoadFile{.path = path, .is_dataset = is_dataset}.emit();
-        });
     }
 
     void VisualizerImpl::setupEventHandlers() {
@@ -586,6 +594,7 @@ namespace lfs::vis {
 
         // Window redraw requests on scene/mode changes
         state::SceneChanged::when([this](const auto&) {
+            python::bump_scene_generation();
             if (window_manager_) {
                 window_manager_->requestRedraw();
             }
@@ -913,8 +922,8 @@ namespace lfs::vis {
         ViewportRegion viewport_region;
         bool has_viewport_region = false;
         if (gui_manager_) {
-            ImVec2 pos = gui_manager_->getViewportPos();
-            ImVec2 size = gui_manager_->getViewportSize();
+            auto pos = gui_manager_->getViewportPos();
+            auto size = gui_manager_->getViewportSize();
 
             viewport_region.x = pos.x;
             viewport_region.y = pos.y;

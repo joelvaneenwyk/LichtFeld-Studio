@@ -277,7 +277,6 @@
     "move_to_root": "Root",
     "images": "Images ({}):",
     "no_images": "No images loaded.",
-    "use_file_browser": "Use 'Open File Browser' to load a dataset.",
     "move_node": "Move: %s",
     "models": "Models ({})",
     "filter": "Filter...",
@@ -305,7 +304,8 @@
     "keyframe_easing.ease_in": "Ease In",
     "keyframe_easing.ease_out": "Ease Out",
     "keyframe_easing.ease_in_out": "Ease In-Out",
-    "keyframe_label": "Keyframe {index}  ({time:.2f}s)"
+    "keyframe_label": "Keyframe {index}  ({time:.2f}s)",
+    "search": "Search"
   },
   "export": {
     "title": "Export",
@@ -403,6 +403,7 @@
     "scene_panel": "Scene Panel",
     "show_console": "Show system Console",
     "hide_console": "Hide system Console",
+    "console": "Console",
     "background": "Background",
     "color": "Color",
     "show_coord_axes": "Show Coordinate Axes",
@@ -449,7 +450,17 @@
     "selection_groups": "Selection Groups",
     "add_group": "+ Add Group",
     "no_selection_groups": "No selection groups",
-    "clear": "Clear"
+    "clear": "Clear",
+    "mesh_wireframe": "Wireframe",
+    "mesh_wireframe_color": "Wireframe Color",
+    "mesh_wireframe_width": "Wireframe Width",
+    "mesh_light_intensity": "Light Intensity",
+    "mesh_ambient": "Ambient",
+    "mesh_backface_culling": "Backface Culling",
+    "mesh_shadow_enabled": "Shadows",
+    "mesh_shadow_resolution": "Shadow Resolution",
+    "camera_frustum_scale": "Frustum Scale",
+    "voxel_size": "Voxel Size"
   },
   "toolbar": {
     "selection": "Selection",
@@ -524,20 +535,6 @@
     "appearance": "Appearance",
     "line_width": "Line Width",
     "instructions": "Enter: Commit selection | Ctrl+C: Copy contents"
-  },
-  "file_browser": {
-    "title": "File Browser",
-    "quick_access": "Quick Access",
-    "current_dir": "Current Directory",
-    "home": "Home",
-    "current_path": "Current Path: %s",
-    "parent_dir": "../",
-    "directory": "[DIR]",
-    "selected": "Selected: %s",
-    "load_dataset": "Load Dataset",
-    "load_sog": "Load SOG",
-    "load_ply": "Load PLY",
-    "enter_dir": "Enter Directory"
   },
   "training_panel": {
     "start_training": "Start Training",
@@ -628,15 +625,6 @@
   "selection_group": {
     "lock": "Lock",
     "unlock": "Unlock"
-  },
-  "file_browser_ext": {
-    "dataset": "[Dataset]",
-    "sog": "[SOG]",
-    "no_file_selected": "No file selected",
-    "not_a_dataset": "(Not a dataset)",
-    "sog_directory": "(SOG Directory)",
-    "sog_meta": "(SOG meta.json)",
-    "error": "Error:"
   },
   "progress": {
     "loss": "Loss:",

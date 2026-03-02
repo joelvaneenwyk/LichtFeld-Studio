@@ -12,12 +12,18 @@
 #include "gui/panel_layout.hpp"
 #include "gui/panel_registry.hpp"
 #include "gui/panels/menu_bar.hpp"
+#include "gui/rml_menu_bar.hpp"
+#include "gui/rml_modal_overlay.hpp"
+#include "gui/rml_right_panel.hpp"
+#include "gui/rml_shell_frame.hpp"
+#include "gui/rml_status_bar.hpp"
+#include "gui/rml_viewport_overlay.hpp"
+#include "gui/rmlui/rmlui_manager.hpp"
 #include "gui/sequencer_ui_manager.hpp"
 #include "gui/sequencer_ui_state.hpp"
 #include "gui/startup_overlay.hpp"
 #include "gui/ui_context.hpp"
 #include "gui/utils/drag_drop_native.hpp"
-#include "windows/disk_space_error_dialog.hpp"
 #include "windows/video_extractor_dialog.hpp"
 #include <filesystem>
 #include <memory>
@@ -31,8 +37,6 @@ namespace lfs::vis {
     class VisualizerImpl;
 
     namespace gui {
-        class FileBrowser;
-
         class GuiManager {
         public:
             GuiManager(VisualizerImpl* viewer);
@@ -57,11 +61,9 @@ namespace lfs::vis {
             // Window visibility
             void showWindow(const std::string& name, bool show = true);
 
-            void setFileSelectedCallback(std::function<void(const std::filesystem::path&, bool)> callback);
-
             // Viewport region access
-            ImVec2 getViewportPos() const;
-            ImVec2 getViewportSize() const;
+            glm::vec2 getViewportPos() const;
+            glm::vec2 getViewportSize() const;
             bool isMouseInViewport() const;
             bool isViewportFocused() const;
             bool isPositionInViewport(double x, double y) const;
@@ -115,8 +117,7 @@ namespace lfs::vis {
             VisualizerImpl* viewer_;
 
             // Owned components
-            std::unique_ptr<FileBrowser> file_browser_;
-            std::unique_ptr<DiskSpaceErrorDialog> disk_space_error_dialog_;
+            std::unique_ptr<RmlModalOverlay> rml_modal_overlay_;
             std::unique_ptr<lfs::gui::VideoExtractorDialog> video_extractor_dialog_;
             std::optional<std::jthread> video_extraction_thread_;
 
@@ -153,10 +154,18 @@ namespace lfs::vis {
             AsyncTaskManager async_tasks_;
 
             StartupOverlay startup_overlay_;
+            RmlShellFrame rml_shell_frame_;
+            RmlRightPanel rml_right_panel_;
+            RmlViewportOverlay rml_viewport_overlay_;
+            RmlMenuBar rml_menu_bar_;
+            RmlStatusBar rml_status_bar_;
 
             // Native drag-drop handler
             NativeDragDrop drag_drop_;
             bool drag_drop_hovering_ = false;
+
+            // RmlUI integration
+            RmlUIManager rmlui_manager_;
 
             // Native panel wrapper storage (registered with PanelRegistry)
             std::vector<std::shared_ptr<IPanel>> native_panel_storage_;

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "core/mesh2splat.hpp"
+#include "core/modal_request.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -137,12 +138,32 @@ namespace lfs::python {
     LFS_PYTHON_RUNTIME_API std::vector<MenuBarEntry> get_menu_bar_entries();
     LFS_PYTHON_RUNTIME_API void draw_menu_bar_entry(const std::string& idname);
 
+    struct MenuItemInfo {
+        int type;
+        const char* label;
+        const char* operator_id;
+        const char* shortcut;
+        bool enabled;
+        bool selected;
+        int callback_index;
+    };
+    using MenuItemVisitor = void (*)(const MenuItemInfo* item, void* user_data);
+
+    LFS_PYTHON_RUNTIME_API void collect_menu_content(const std::string& idname,
+                                                     MenuItemVisitor visitor, void* user_data);
+    LFS_PYTHON_RUNTIME_API void execute_menu_callback(const std::string& idname, int callback_index);
+
     // Modal dialog callbacks
     using DrawModalsCallback = void (*)();
     using HasModalsCallback = bool (*)();
 
     LFS_PYTHON_RUNTIME_API void draw_python_modals(lfs::core::Scene* scene = nullptr);
     LFS_PYTHON_RUNTIME_API bool has_python_modals();
+
+    // Modal enqueue callback - routes ModalRequests from PyModalRegistry to the overlay
+    using ModalEnqueueCallback = std::function<void(lfs::core::ModalRequest)>;
+    LFS_PYTHON_RUNTIME_API void set_modal_enqueue_callback(ModalEnqueueCallback cb);
+    LFS_PYTHON_RUNTIME_API const ModalEnqueueCallback& get_modal_enqueue_callback();
 
     using DrawPopupsCallback = void (*)();
     LFS_PYTHON_RUNTIME_API void set_popup_draw_callback(DrawPopupsCallback cb);
@@ -232,6 +253,8 @@ namespace lfs::python {
         bool (*has_menu_bar_entries)() = nullptr;
         void (*get_menu_bar_entries)(MenuBarEntryVisitor, void*) = nullptr;
         void (*draw_menu_bar_entry)(const char*) = nullptr;
+        void (*collect_menu_content)(const char*, MenuItemVisitor, void*) = nullptr;
+        void (*execute_menu_callback)(const char*, int) = nullptr;
 
         // Modals
         void (*draw_modals)() = nullptr;
@@ -395,11 +418,13 @@ namespace lfs::python {
     struct SectionDrawCallbacks {
         DrawSectionCallback draw_tools_section = nullptr;
         DrawSectionCallback draw_console_button = nullptr;
+        DrawSectionCallback toggle_system_console = nullptr;
     };
 
     LFS_PYTHON_RUNTIME_API void set_section_draw_callbacks(const SectionDrawCallbacks& callbacks);
     LFS_PYTHON_RUNTIME_API void draw_tools_section();
     LFS_PYTHON_RUNTIME_API void draw_console_button();
+    LFS_PYTHON_RUNTIME_API void toggle_system_console();
 
     // Sequencer UI state access (for Python modification)
     // Must match layout of vis::gui::panels::SequencerUIState
@@ -467,6 +492,7 @@ namespace lfs::python {
         void set(core::Scene* scene);
         core::Scene* get() const;
         uint64_t generation() const;
+        void bump();
 
     private:
         std::atomic<core::Scene*> scene_{nullptr};
@@ -476,6 +502,7 @@ namespace lfs::python {
     LFS_PYTHON_RUNTIME_API void set_application_scene(core::Scene* scene);
     LFS_PYTHON_RUNTIME_API core::Scene* get_application_scene();
     LFS_PYTHON_RUNTIME_API uint64_t get_scene_generation();
+    LFS_PYTHON_RUNTIME_API void bump_scene_generation();
 
     LFS_PYTHON_RUNTIME_API void set_gil_state_ready(bool ready);
     LFS_PYTHON_RUNTIME_API bool is_gil_state_ready();
@@ -525,6 +552,39 @@ namespace lfs::python {
     LFS_PYTHON_RUNTIME_API void* get_view_context_state();
     LFS_PYTHON_RUNTIME_API void set_shared_dpi_scale(float scale);
     LFS_PYTHON_RUNTIME_API float get_shared_dpi_scale();
+
+    LFS_PYTHON_RUNTIME_API void set_rml_manager(void* manager);
+    LFS_PYTHON_RUNTIME_API void* get_rml_manager();
+
+    // RmlPanelHost opaque operations — function pointers set by the exe
+    // to avoid linking RmlUI code into the Python module (.so)
+    struct PanelDrawContext;
+
+    struct RmlPanelHostOps {
+        void* (*create)(void* manager, const char* context_name, const char* rml_path);
+        void (*destroy)(void* host);
+        void (*draw)(void* host, const void* draw_ctx);
+        void (*draw_direct)(void* host, float x, float y, float w, float h);
+        void* (*get_document)(void* host);
+        bool (*is_loaded)(void* host);
+        void (*set_height_mode)(void* host, int mode);
+        float (*get_content_height)(void* host);
+        bool (*ensure_context)(void* host);
+        void* (*get_context)(void* host);
+        void (*set_foreground)(void* host, bool fg);
+        void (*mark_content_dirty)(void* host);
+    };
+
+    LFS_PYTHON_RUNTIME_API void set_rml_panel_host_ops(const RmlPanelHostOps& ops);
+    LFS_PYTHON_RUNTIME_API const RmlPanelHostOps& get_rml_panel_host_ops();
+
+    using RmlDocRegisterCallback = void (*)(const char* name, void* doc);
+    using RmlDocUnregisterCallback = void (*)(const char* name);
+
+    LFS_PYTHON_RUNTIME_API void set_rml_doc_registry_callbacks(RmlDocRegisterCallback reg_cb,
+                                                               RmlDocUnregisterCallback unreg_cb);
+    LFS_PYTHON_RUNTIME_API void register_rml_document(const char* name, void* doc);
+    LFS_PYTHON_RUNTIME_API void unregister_rml_document(const char* name);
 
     // Exit popup state - thread-safe flag for window close callback
     LFS_PYTHON_RUNTIME_API bool is_exit_popup_open();

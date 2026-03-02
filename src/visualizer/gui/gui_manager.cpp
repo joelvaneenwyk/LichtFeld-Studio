@@ -20,10 +20,10 @@
 #include "gui/panel_registry.hpp"
 #include "gui/panels/mesh2splat_panel.hpp"
 #include "gui/panels/python_console_panel.hpp"
+#include "gui/rmlui/rml_panel_host.hpp"
 #include "gui/string_keys.hpp"
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/windows_utils.hpp"
-#include "gui/windows/file_browser.hpp"
 #include "io/video_frame_extractor.hpp"
 #include <implot.h>
 
@@ -57,16 +57,15 @@ namespace lfs::vis::gui {
 
     GuiManager::GuiManager(VisualizerImpl* viewer)
         : viewer_(viewer),
-          sequencer_ui_(viewer, sequencer_ui_state_),
+          sequencer_ui_(viewer, sequencer_ui_state_, &rmlui_manager_),
           gizmo_manager_(viewer),
           async_tasks_(viewer) {
 
         panel_layout_.loadState();
 
         // Create components
-        file_browser_ = std::make_unique<FileBrowser>();
         menu_bar_ = std::make_unique<MenuBar>();
-        disk_space_error_dialog_ = std::make_unique<DiskSpaceErrorDialog>();
+        rml_modal_overlay_ = std::make_unique<RmlModalOverlay>(&rmlui_manager_);
         video_extractor_dialog_ = std::make_unique<lfs::gui::VideoExtractorDialog>();
 
         // Wire up video extractor dialog callback
@@ -110,12 +109,14 @@ namespace lfs::vis::gui {
         });
 
         // Initialize window states
-        window_states_["file_browser"] = false;
         window_states_["scene_panel"] = true;
         window_states_["system_console"] = false;
         window_states_["training_tab"] = false;
         window_states_["export_dialog"] = false;
         window_states_["python_console"] = false;
+
+        lfs::python::set_modal_enqueue_callback(
+            [this](lfs::core::ModalRequest req) { rml_modal_overlay_->enqueue(std::move(req)); });
 
         setupEventHandlers();
         async_tasks_.setupEvents();
@@ -409,19 +410,8 @@ namespace lfs::vis::gui {
         }
         ImGui_ImplOpenGL3_CreateFontsTexture();
 
-        setFileSelectedCallback([this](const std::filesystem::path& path, const bool is_dataset) {
-            window_states_["file_browser"] = false;
-            if (is_dataset) {
-                lfs::core::events::cmd::ShowDatasetLoadPopup{.dataset_path = path}.emit();
-            } else {
-                lfs::core::events::cmd::LoadFile{.path = path, .is_dataset = false}.emit();
-            }
-        });
-
         initMenuBar();
         menu_bar_->setFonts(buildFontSet());
-
-        startup_overlay_.loadTextures();
 
         if (!drag_drop_.init(viewer_->getWindow())) {
             LOG_WARN("Native drag-drop initialization failed, drag-drop will use SDL events only");
@@ -434,6 +424,75 @@ namespace lfs::vis::gui {
                 LOG_ERROR("InputController not available for file drop handling");
             }
         });
+
+        rmlui_manager_.init(viewer_->getWindow(), xscale);
+        lfs::python::set_rml_manager(&rmlui_manager_);
+
+        startup_overlay_.init(&rmlui_manager_);
+        rml_shell_frame_.init(&rmlui_manager_);
+        rml_right_panel_.init(&rmlui_manager_);
+        rml_right_panel_.on_tab_changed = [this](const std::string& idname) {
+            panel_layout_.setActiveTab(idname);
+        };
+        rml_right_panel_.on_splitter_delta = [this](float delta_y) {
+            const auto* mvp = ImGui::GetMainViewport();
+            ScreenState ss;
+            ss.work_pos = {mvp->WorkPos.x, mvp->WorkPos.y};
+            ss.work_size = {mvp->WorkSize.x, mvp->WorkSize.y};
+            panel_layout_.adjustScenePanelRatio(delta_y, ss);
+        };
+        rml_right_panel_.on_resize_delta = [this](float dx) {
+            const auto* mvp = ImGui::GetMainViewport();
+            ScreenState ss;
+            ss.work_pos = {mvp->WorkPos.x, mvp->WorkPos.y};
+            ss.work_size = {mvp->WorkSize.x, mvp->WorkSize.y};
+            panel_layout_.applyResizeDelta(dx, ss);
+        };
+        rml_viewport_overlay_.init(&rmlui_manager_);
+        rml_menu_bar_.init(&rmlui_manager_);
+        rml_status_bar_.init(&rmlui_manager_);
+
+        lfs::python::RmlPanelHostOps ops{};
+        ops.create = [](void* mgr, const char* name, const char* rml) -> void* {
+            return new RmlPanelHost(static_cast<RmlUIManager*>(mgr),
+                                    std::string(name), std::string(rml));
+        };
+        ops.destroy = [](void* host) {
+            delete static_cast<RmlPanelHost*>(host);
+        };
+        ops.draw = [](void* host, const void* ctx) {
+            static_cast<RmlPanelHost*>(host)->draw(
+                *static_cast<const PanelDrawContext*>(ctx));
+        };
+        ops.draw_direct = [](void* host, float x, float y, float w, float h) {
+            static_cast<RmlPanelHost*>(host)->drawDirect(x, y, w, h);
+        };
+        ops.get_document = [](void* host) -> void* {
+            return static_cast<RmlPanelHost*>(host)->getDocument();
+        };
+        ops.is_loaded = [](void* host) -> bool {
+            return static_cast<RmlPanelHost*>(host)->isDocumentLoaded();
+        };
+        ops.set_height_mode = [](void* host, int mode) {
+            static_cast<RmlPanelHost*>(host)->setHeightMode(
+                static_cast<HeightMode>(mode));
+        };
+        ops.get_content_height = [](void* host) -> float {
+            return static_cast<RmlPanelHost*>(host)->getContentHeight();
+        };
+        ops.ensure_context = [](void* host) -> bool {
+            return static_cast<RmlPanelHost*>(host)->ensureContext();
+        };
+        ops.get_context = [](void* host) -> void* {
+            return static_cast<RmlPanelHost*>(host)->getContext();
+        };
+        ops.set_foreground = [](void* host, bool fg) {
+            static_cast<RmlPanelHost*>(host)->setForeground(fg);
+        };
+        ops.mark_content_dirty = [](void* host) {
+            static_cast<RmlPanelHost*>(host)->markContentDirty();
+        };
+        lfs::python::set_rml_panel_host_ops(ops);
 
         registerNativePanels();
     }
@@ -448,8 +507,15 @@ namespace lfs::vis::gui {
 
         async_tasks_.shutdown();
 
+        rml_status_bar_.shutdown();
+        rml_menu_bar_.shutdown();
+        rml_viewport_overlay_.shutdown();
+        rml_right_panel_.shutdown();
+        rml_shell_frame_.shutdown();
+        startup_overlay_.shutdown();
+        rmlui_manager_.shutdown();
+
         sequencer_ui_.destroyGLResources();
-        startup_overlay_.destroyTextures();
         drag_drop_.shutdown();
 
         if (ImGui::GetCurrentContext()) {
@@ -489,18 +555,10 @@ namespace lfs::vis::gui {
         constexpr uint32_t SELF = static_cast<uint32_t>(PanelOption::SELF_MANAGED);
 
         // Floating panels (self-managed windows)
-        reg_panel("native.file_browser", "File Browser",
-                  make_panel(FileBrowserPanel(file_browser_.get(), &window_states_["file_browser"])),
-                  PanelSpace::Floating, 10, SELF);
-
         reg_panel("native.video_extractor", "Video Extractor",
                   make_panel(VideoExtractorPanel(video_extractor_dialog_.get())),
                   PanelSpace::Floating, 11, 0, 750.0f);
         reg.set_panel_enabled("native.video_extractor", false);
-
-        reg_panel("native.disk_space_error", "Disk Space Error",
-                  make_panel(DiskSpaceErrorPanel(disk_space_error_dialog_.get())),
-                  PanelSpace::Floating, 900, SELF);
 
         reg_panel("native.mesh2splat", "Mesh to Splat",
                   make_panel(panels::Mesh2SplatPanel(viewer_)),
@@ -545,8 +603,13 @@ namespace lfs::vis::gui {
                   PanelSpace::ViewportOverlay, 950);
 
         reg_panel("native.startup_overlay", "Startup Overlay",
-                  make_panel(StartupOverlayPanel(&startup_overlay_, font_small_, &drag_drop_hovering_)),
+                  make_panel(StartupOverlayPanel(&startup_overlay_, &drag_drop_hovering_)),
                   PanelSpace::ViewportOverlay, 1000);
+
+        reg_panel("native.status_bar", "##StatusBar",
+                  make_panel(RmlStatusBarPanel(&rml_status_bar_)),
+                  PanelSpace::StatusBar, 0);
+        reg.set_panel_disabled_override("lfs.status_bar");
     }
 
     void GuiManager::render() {
@@ -593,6 +656,54 @@ namespace lfs::vis::gui {
 
         if (menu_bar_ && !ui_hidden_) {
             menu_bar_->render();
+
+            if (menu_bar_->hasMenuEntries()) {
+                auto entries = menu_bar_->getMenuEntries();
+                std::vector<std::string> labels;
+                std::vector<std::string> idnames;
+                labels.reserve(entries.size());
+                idnames.reserve(entries.size());
+                for (const auto& entry : entries) {
+                    labels.emplace_back(LOC(entry.label.c_str()));
+                    idnames.emplace_back(entry.idname);
+                }
+                rml_menu_bar_.updateLabels(labels, idnames);
+            } else {
+                rml_menu_bar_.updateLabels({}, {});
+            }
+
+            // Reserve work area for the RML menu bar via ImGui's internal inset mechanism
+            {
+                auto* vp = static_cast<ImGuiViewportP*>(ImGui::GetMainViewport());
+                float bar_h = rml_menu_bar_.barHeight();
+                vp->BuildWorkInsetMin.y = ImMax(vp->BuildWorkInsetMin.y, bar_h);
+                vp->WorkInsetMin.y = ImMax(vp->WorkInsetMin.y, bar_h);
+                vp->UpdateWorkRect();
+            }
+
+            const auto& io = ImGui::GetIO();
+            PanelInputState menu_input;
+            menu_input.mouse_x = io.MousePos.x;
+            menu_input.mouse_y = io.MousePos.y;
+            menu_input.mouse_down[0] = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+            menu_input.mouse_clicked[0] = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+            menu_input.screen_w = static_cast<int>(ImGui::GetMainViewport()->Size.x);
+            menu_input.screen_h = static_cast<int>(ImGui::GetMainViewport()->Size.y);
+
+            rml_menu_bar_.processInput(menu_input);
+
+            if (rml_menu_bar_.wantsInput())
+                ImGui::GetIO().WantCaptureMouse = true;
+
+            rml_menu_bar_.draw(menu_input.screen_w, menu_input.screen_h);
+
+            if (rml_menu_bar_.fbo().valid() && !rml_menu_bar_.isOpen()) {
+                auto* dl = ImGui::GetForegroundDrawList();
+                auto* mvp = ImGui::GetMainViewport();
+                ImVec2 pos = mvp->Pos;
+                float sw = static_cast<float>(menu_input.screen_w);
+                rml_menu_bar_.fbo().blitToDrawList(dl, pos, {sw, rml_menu_bar_.barHeight()});
+            }
         }
 
         updateInputOverrides(mouse_in_viewport);
@@ -628,6 +739,27 @@ namespace lfs::vis::gui {
 
         ImGui::End();
 
+        if (!ui_hidden_) {
+            const auto* mvp = ImGui::GetMainViewport();
+            constexpr float STATUS_BAR_H = 22.0f;
+            const float panel_h = mvp->WorkSize.y - STATUS_BAR_H;
+
+            ShellRegions shell_regions;
+            shell_regions.menu_pos = mvp->Pos;
+            shell_regions.menu_size = {mvp->Size.x, mvp->WorkPos.y - mvp->Pos.y};
+
+            if (show_main_panel_) {
+                const float rpw = panel_layout_.getRightPanelWidth();
+                shell_regions.right_panel_pos = {mvp->WorkPos.x + mvp->WorkSize.x - rpw, mvp->WorkPos.y};
+                shell_regions.right_panel_size = {rpw, panel_h};
+            }
+
+            shell_regions.status_pos = {mvp->WorkPos.x, mvp->WorkPos.y + mvp->WorkSize.y - STATUS_BAR_H};
+            shell_regions.status_size = {mvp->WorkSize.x, STATUS_BAR_H};
+
+            rml_shell_frame_.render(shell_regions);
+        }
+
         // Update editor context state for this frame
         auto& editor_ctx = viewer_->getEditorContext();
         editor_ctx.update(viewer_->getSceneManager(), viewer_->getTrainerManager());
@@ -635,7 +767,6 @@ namespace lfs::vis::gui {
         // Create context for this frame
         UIContext ctx{
             .viewer = viewer_,
-            .file_browser = file_browser_.get(),
             .window_states = &window_states_,
             .editor = &editor_ctx,
             .sequencer_controller = &sequencer_ui_.controller(),
@@ -659,7 +790,71 @@ namespace lfs::vis::gui {
 
         auto& reg = PanelRegistry::instance();
 
-        panel_layout_.renderRightPanel(ctx, draw_ctx, show_main_panel_, ui_hidden_, window_states_, focus_panel_name_);
+        const auto* mvp_input = ImGui::GetMainViewport();
+        const auto& io = ImGui::GetIO();
+        PanelInputState panel_input;
+        panel_input.mouse_x = io.MousePos.x;
+        panel_input.mouse_y = io.MousePos.y;
+        panel_input.mouse_down[0] = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+        panel_input.mouse_down[1] = ImGui::IsMouseDown(ImGuiMouseButton_Right);
+        panel_input.mouse_down[2] = ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+        panel_input.mouse_clicked[0] = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        panel_input.mouse_clicked[1] = ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+        panel_input.mouse_clicked[2] = ImGui::IsMouseClicked(ImGuiMouseButton_Middle);
+        panel_input.mouse_released[0] = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
+        panel_input.mouse_released[1] = ImGui::IsMouseReleased(ImGuiMouseButton_Right);
+        panel_input.mouse_released[2] = ImGui::IsMouseReleased(ImGuiMouseButton_Middle);
+        panel_input.screen_w = static_cast<int>(mvp_input->Size.x);
+        panel_input.screen_h = static_cast<int>(mvp_input->Size.y);
+
+        ScreenState screen;
+        screen.work_pos = {mvp_input->WorkPos.x, mvp_input->WorkPos.y};
+        screen.work_size = {mvp_input->WorkSize.x, mvp_input->WorkSize.y};
+        screen.any_item_active = ImGui::IsAnyItemActive();
+
+        if (show_main_panel_ && !ui_hidden_) {
+            constexpr float SBH = PanelLayoutManager::STATUS_BAR_HEIGHT;
+            const float rpw = panel_layout_.getRightPanelWidth();
+            const float ph = screen.work_size.y - SBH;
+            const float dpi = python::get_shared_dpi_scale();
+            const float splitter_h = PanelLayoutManager::SPLITTER_H * dpi;
+            const float avail_h = ph - 16.0f;
+            const float scene_h = std::max(80.0f * dpi,
+                                           avail_h * panel_layout_.getScenePanelRatio() - splitter_h * 0.5f);
+
+            RightPanelLayout rp_layout;
+            rp_layout.pos = glm::vec2(screen.work_pos.x + screen.work_size.x - rpw, screen.work_pos.y);
+            rp_layout.size = glm::vec2(rpw, ph);
+            rp_layout.scene_h = scene_h + 8.0f;
+            rp_layout.splitter_h = splitter_h;
+
+            rml_right_panel_.processInput(rp_layout, panel_input);
+
+            if (rml_right_panel_.wantsInput())
+                ImGui::GetIO().WantCaptureMouse = true;
+
+            const auto main_tabs = reg.get_panels_for_space(PanelSpace::MainPanelTab);
+            std::vector<TabSnapshot> tab_snaps;
+            tab_snaps.reserve(main_tabs.size());
+            for (const auto& t : main_tabs)
+                tab_snaps.push_back({t.idname, t.label});
+
+            rml_right_panel_.render(rp_layout, tab_snaps, panel_layout_.getActiveTab());
+        }
+
+        panel_layout_.renderRightPanel(ctx, draw_ctx, show_main_panel_, ui_hidden_,
+                                       window_states_, focus_panel_name_, panel_input, screen);
+
+        // Apply cursor requests from right panel and panel layout
+        auto apply_cursor = [](CursorRequest req) {
+            switch (req) {
+            case CursorRequest::ResizeEW: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW); break;
+            case CursorRequest::ResizeNS: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS); break;
+            default: break;
+            }
+        };
+        apply_cursor(rml_right_panel_.getCursorRequest());
+        apply_cursor(panel_layout_.getCursorRequest());
 
         python::set_viewport_bounds(viewport_layout_.pos.x, viewport_layout_.pos.y,
                                     viewport_layout_.size.x, viewport_layout_.size.y);
@@ -670,11 +865,20 @@ namespace lfs::vis::gui {
         gizmo_manager_.updateToolState(ctx, ui_hidden_);
         gizmo_manager_.updateCropFlash();
 
+        rml_viewport_overlay_.setViewportBounds(viewport_layout_.pos, viewport_layout_.size);
+        rml_viewport_overlay_.processInput();
         reg.draw_panels(PanelSpace::ViewportOverlay, draw_ctx);
+        rml_viewport_overlay_.render();
+
+        if (rml_menu_bar_.isOpen() && rml_menu_bar_.fbo().valid()) {
+            auto* mvp = ImGui::GetMainViewport();
+            rml_menu_bar_.fbo().blitToDrawList(
+                ImGui::GetForegroundDrawList(), mvp->Pos, mvp->Size);
+        }
 
         // Recompute viewport layout
         viewport_layout_ = panel_layout_.computeViewportLayout(
-            show_main_panel_, ui_hidden_, window_states_["python_console"]);
+            show_main_panel_, ui_hidden_, window_states_["python_console"], screen);
 
         if (!ui_hidden_) {
             reg.draw_panels(PanelSpace::StatusBar, draw_ctx);
@@ -683,7 +887,14 @@ namespace lfs::vis::gui {
         python::draw_python_modals(scene);
         python::draw_python_popups(scene);
 
-        // Notification popups are rendered via PyModalRegistry (draw_modals in Python bridge)
+        {
+            const auto* mvp_modal = ImGui::GetMainViewport();
+            rml_modal_overlay_->processInput();
+            rml_modal_overlay_->render(static_cast<int>(mvp_modal->Size.x),
+                                       static_cast<int>(mvp_modal->Size.y),
+                                       viewport_layout_.pos.x, viewport_layout_.pos.y,
+                                       viewport_layout_.size.x, viewport_layout_.size.y);
+        }
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -863,7 +1074,9 @@ namespace lfs::vis::gui {
 
     void GuiManager::renderViewportDecorations() {
         if (viewport_layout_.size.x > 0 && viewport_layout_.size.y > 0) {
-            widgets::DrawViewportVignette(viewport_layout_.pos, viewport_layout_.size);
+            const ImVec2 vp_pos(viewport_layout_.pos.x, viewport_layout_.pos.y);
+            const ImVec2 vp_size(viewport_layout_.size.x, viewport_layout_.size.y);
+            widgets::DrawViewportVignette(vp_pos, vp_size);
         }
 
         if (!ui_hidden_ && viewport_layout_.size.x > 0 && viewport_layout_.size.y > 0) {
@@ -871,7 +1084,7 @@ namespace lfs::vis::gui {
             const float r = t.viewport.corner_radius;
             if (r > 0.0f) {
                 auto* const dl = ImGui::GetBackgroundDrawList();
-                const ImU32 bg = toU32(t.palette.background);
+                const ImU32 bg = toU32(t.menu_background());
                 const float x1 = viewport_layout_.pos.x, y1 = viewport_layout_.pos.y;
                 const float x2 = x1 + viewport_layout_.size.x, y2 = y1 + viewport_layout_.size.y;
 
@@ -888,6 +1101,16 @@ namespace lfs::vis::gui {
                 maskCorner({x2, y1}, {x2 - r, y1}, {x2 - r, y1 + r}, IM_PI * 1.5f, IM_PI * 2.0f);
                 maskCorner({x1, y2}, {x1 + r, y2}, {x1 + r, y2 - r}, IM_PI * 0.5f, IM_PI);
                 maskCorner({x2, y2}, {x2, y2 - r}, {x2 - r, y2 - r}, 0.0f, IM_PI * 0.5f);
+
+                if (show_main_panel_) {
+                    const float rpw = panel_layout_.getRightPanelWidth();
+                    auto* mvp = ImGui::GetMainViewport();
+                    const float px = mvp->WorkPos.x + mvp->WorkSize.x - rpw;
+                    const float py1 = mvp->WorkPos.y;
+                    const float py2 = py1 + mvp->WorkSize.y - PanelLayoutManager::STATUS_BAR_HEIGHT;
+                    maskCorner({px, py1}, {px, py1 + r}, {px + r, py1 + r}, IM_PI, IM_PI * 1.5f);
+                    maskCorner({px, py2}, {px + r, py2}, {px + r, py2 - r}, IM_PI * 0.5f, IM_PI);
+                }
 
                 if (t.viewport.border_size > 0.0f) {
                     dl->AddRect({x1, y1}, {x2, y2}, t.viewport_border_u32(), r,
@@ -934,16 +1157,16 @@ namespace lfs::vis::gui {
         }
     }
 
-    ImVec2 GuiManager::getViewportPos() const {
+    glm::vec2 GuiManager::getViewportPos() const {
         return viewport_layout_.pos;
     }
 
-    ImVec2 GuiManager::getViewportSize() const {
+    glm::vec2 GuiManager::getViewportSize() const {
         return viewport_layout_.size;
     }
 
     bool GuiManager::isMouseInViewport() const {
-        ImVec2 mouse_pos = ImGui::GetMousePos();
+        const auto mouse_pos = ImGui::GetMousePos();
         return mouse_pos.x >= viewport_layout_.pos.x &&
                mouse_pos.y >= viewport_layout_.pos.y &&
                mouse_pos.x < viewport_layout_.pos.x + viewport_layout_.size.x &&
@@ -1014,70 +1237,103 @@ namespace lfs::vis::gui {
         });
 
         state::DiskSpaceSaveFailed::when([this](const auto& e) {
-            // Non-disk-space errors are handled by notification_bridge.cpp
+            using namespace lichtfeld::Strings;
             if (!e.is_disk_space_error)
                 return;
 
-            if (!disk_space_error_dialog_)
-                return;
+            auto formatBytes = [](size_t bytes) -> std::string {
+                constexpr double KB = 1024.0;
+                constexpr double MB = KB * 1024.0;
+                constexpr double GB = MB * 1024.0;
+                if (bytes >= static_cast<size_t>(GB))
+                    return std::format("{:.2f} GB", static_cast<double>(bytes) / GB);
+                if (bytes >= static_cast<size_t>(MB))
+                    return std::format("{:.2f} MB", static_cast<double>(bytes) / MB);
+                if (bytes >= static_cast<size_t>(KB))
+                    return std::format("{:.2f} KB", static_cast<double>(bytes) / KB);
+                return std::format("{} bytes", bytes);
+            };
 
-            const DiskSpaceErrorDialog::ErrorInfo info{
-                .path = e.path,
-                .error_message = e.error,
-                .required_bytes = e.required_bytes,
-                .available_bytes = e.available_bytes,
-                .iteration = e.iteration,
-                .is_checkpoint = e.is_checkpoint};
+            const std::string subtitle = e.is_checkpoint
+                                             ? std::format("{} {})", LOC(DiskSpaceDialog::CHECKPOINT_SAVE_FAILED), e.iteration)
+                                             : std::string(LOC(DiskSpaceDialog::EXPORT_FAILED));
 
-            if (e.is_checkpoint) {
-                auto on_retry = [this, iteration = e.iteration]() {
-                    if (auto* tm = viewer_->getTrainerManager()) {
-                        if (tm->isFinished() || !tm->isTrainingActive()) {
-                            if (auto* trainer = tm->getTrainer()) {
-                                LOG_INFO("Retrying save at iteration {}", iteration);
-                                trainer->save_final_ply_and_checkpoint(iteration);
-                            }
-                        } else {
-                            tm->requestSaveCheckpoint();
-                        }
-                    }
-                };
+            std::string body;
+            body += std::format("<div>{}</div>", LOC(DiskSpaceDialog::INSUFFICIENT_SPACE_PREFIX));
+            body += std::format("<div class=\"content-row\"><span class=\"dim-text\">{} </span>{}</div>",
+                                LOC(DiskSpaceDialog::LOCATION_LABEL), lfs::core::path_to_utf8(e.path.parent_path()));
+            body += std::format("<div class=\"content-row\"><span class=\"dim-text\">{} </span>{}</div>",
+                                LOC(DiskSpaceDialog::REQUIRED_LABEL), formatBytes(e.required_bytes));
+            if (e.available_bytes > 0) {
+                body += std::format("<div class=\"content-row\"><span class=\"dim-text\">{} </span>"
+                                    "<span class=\"error-text\">{}</span></div>",
+                                    LOC(DiskSpaceDialog::AVAILABLE_LABEL), formatBytes(e.available_bytes));
+            }
+            body += std::format("<div class=\"warning-text\">{}</div>", LOC(DiskSpaceDialog::INSTRUCTION));
 
-                auto on_change_location = [this, iteration = e.iteration](const std::filesystem::path& new_path) {
-                    if (auto* tm = viewer_->getTrainerManager()) {
-                        if (auto* trainer = tm->getTrainer()) {
-                            auto params = trainer->getParams();
-                            params.dataset.output_path = new_path;
-                            trainer->setParams(params);
-                            LOG_INFO("Output path changed to: {}", lfs::core::path_to_utf8(new_path));
+            lfs::core::ModalRequest req;
+            req.title = std::format("{} | {}", LOC(DiskSpaceDialog::ERROR_LABEL), subtitle);
+            req.body_rml = body;
+            req.style = lfs::core::ModalStyle::Error;
+            req.width_dp = 480;
+            req.buttons = {
+                {LOC(DiskSpaceDialog::CANCEL), "secondary"},
+                {LOC(DiskSpaceDialog::CHANGE_LOCATION), "warning"},
+                {LOC(DiskSpaceDialog::RETRY), "primary"}};
 
+            auto path = e.path;
+            auto iteration = e.iteration;
+            auto is_checkpoint = e.is_checkpoint;
+
+            req.on_result = [this, path, iteration, is_checkpoint](const lfs::core::ModalResult& result) {
+                if (result.button_label == LOC(DiskSpaceDialog::RETRY)) {
+                    if (is_checkpoint) {
+                        if (auto* tm = viewer_->getTrainerManager()) {
                             if (tm->isFinished() || !tm->isTrainingActive()) {
-                                trainer->save_final_ply_and_checkpoint(iteration);
+                                if (auto* trainer = tm->getTrainer()) {
+                                    LOG_INFO("Retrying save at iteration {}", iteration);
+                                    trainer->save_final_ply_and_checkpoint(iteration);
+                                }
                             } else {
                                 tm->requestSaveCheckpoint();
                             }
                         }
                     }
-                };
-
-                auto on_cancel = []() {
+                } else if (result.button_label == LOC(DiskSpaceDialog::CHANGE_LOCATION)) {
+                    std::filesystem::path new_location = SelectFolderDialog(
+                        LOC(DiskSpaceDialog::SELECT_OUTPUT_LOCATION), path.parent_path());
+                    if (!new_location.empty() && is_checkpoint) {
+                        if (auto* tm = viewer_->getTrainerManager()) {
+                            if (auto* trainer = tm->getTrainer()) {
+                                auto params = trainer->getParams();
+                                params.dataset.output_path = new_location;
+                                trainer->setParams(params);
+                                LOG_INFO("Output path changed to: {}", lfs::core::path_to_utf8(new_location));
+                                if (tm->isFinished() || !tm->isTrainingActive())
+                                    trainer->save_final_ply_and_checkpoint(iteration);
+                                else
+                                    tm->requestSaveCheckpoint();
+                            }
+                        }
+                    } else if (!new_location.empty()) {
+                        LOG_INFO("Re-export manually using File > Export to: {}",
+                                 lfs::core::path_to_utf8(new_location));
+                    }
+                } else {
+                    if (is_checkpoint)
+                        LOG_WARN("Checkpoint save cancelled by user");
+                    else
+                        LOG_INFO("Export cancelled by user");
+                }
+            };
+            req.on_cancel = [is_checkpoint]() {
+                if (is_checkpoint)
                     LOG_WARN("Checkpoint save cancelled by user");
-                };
-
-                disk_space_error_dialog_->show(info, on_retry, on_change_location, on_cancel);
-            } else {
-                auto on_retry = []() {};
-
-                auto on_change_location = [](const std::filesystem::path& new_path) {
-                    LOG_INFO("Re-export manually using File > Export to: {}", lfs::core::path_to_utf8(new_path));
-                };
-
-                auto on_cancel = []() {
+                else
                     LOG_INFO("Export cancelled by user");
-                };
+            };
 
-                disk_space_error_dialog_->show(info, on_retry, on_change_location, on_cancel);
-            }
+            rml_modal_overlay_->enqueue(std::move(req));
         });
 
         state::DatasetLoadCompleted::when([this](const auto& e) {
@@ -1099,8 +1355,8 @@ namespace lfs::vis::gui {
     }
 
     bool GuiManager::isModalWindowOpen() const {
-        // Check any ImGui popup/modal (covers Python popups and floating panels)
-        return ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+        return ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel) ||
+               rml_modal_overlay_->isOpen();
     }
 
     void GuiManager::captureKey(int key, int mods) {
@@ -1164,12 +1420,6 @@ namespace lfs::vis::gui {
 
     void GuiManager::dismissStartupOverlay() {
         startup_overlay_.dismiss();
-    }
-
-    void GuiManager::setFileSelectedCallback(std::function<void(const std::filesystem::path&, bool)> callback) {
-        if (file_browser_) {
-            file_browser_->setOnFileSelected(callback);
-        }
     }
 
     void GuiManager::requestExitConfirmation() {

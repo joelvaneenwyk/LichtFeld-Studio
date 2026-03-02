@@ -276,7 +276,6 @@
     "move_to_root": "根目录",
     "images": "图像 ({})：",
     "no_images": "未加载图像。",
-    "use_file_browser": "使用'打开文件浏览器'加载数据集。",
     "move_node": "移动：%s",
     "models": "模型 ({})",
     "filter": "过滤器...",
@@ -305,7 +304,8 @@
     "keyframe_easing.ease_in": "缓入",
     "keyframe_easing.ease_out": "缓出",
     "keyframe_easing.ease_in_out": "缓入缓出",
-    "keyframe_label": "关键帧 {index}  ({time:.2f}s)"
+    "keyframe_label": "关键帧 {index}  ({time:.2f}s)",
+    "search": "搜索"
   },
   "export": {
     "title": "导出",
@@ -403,6 +403,7 @@
     "scene_panel": "场景面板",
     "show_console": "显示系统控制台",
     "hide_console": "隐藏系统控制台",
+    "console": "控制台",
     "background": "背景",
     "color": "颜色",
     "show_coord_axes": "显示坐标轴",
@@ -449,7 +450,17 @@
     "add_group": "+ 添加组",
     "no_selection_groups": "无选择组",
     "clear": "清除",
-    "mesh": "网格"
+    "mesh": "网格",
+    "mesh_wireframe": "线框",
+    "mesh_wireframe_color": "线框颜色",
+    "mesh_wireframe_width": "线框宽度",
+    "mesh_light_intensity": "光照强度",
+    "mesh_ambient": "环境光",
+    "mesh_backface_culling": "背面剔除",
+    "mesh_shadow_enabled": "阴影",
+    "mesh_shadow_resolution": "阴影分辨率",
+    "camera_frustum_scale": "视锥体缩放",
+    "voxel_size": "体素大小"
   },
   "toolbar": {
     "selection": "选择",
@@ -512,20 +523,6 @@
     "appearance": "外观",
     "line_width": "线宽",
     "instructions": "Enter：确认裁剪 | Ctrl+C：复制内容"
-  },
-  "file_browser": {
-    "title": "文件浏览器",
-    "quick_access": "快速访问",
-    "current_dir": "当前目录",
-    "home": "主页",
-    "current_path": "当前路径：%s",
-    "parent_dir": "../",
-    "directory": "[目录]",
-    "selected": "已选择：%s",
-    "load_dataset": "加载数据集",
-    "load_sog": "加载SOG",
-    "load_ply": "加载PLY",
-    "enter_dir": "进入目录"
   },
   "training_panel": {
     "start_training": "开始训练",
@@ -616,15 +613,6 @@
   "selection_group": {
     "lock": "锁定",
     "unlock": "解锁"
-  },
-  "file_browser_ext": {
-    "dataset": "[数据集]",
-    "sog": "[SOG]",
-    "no_file_selected": "未选择文件",
-    "not_a_dataset": "（非数据集）",
-    "sog_directory": "（SOG目录）",
-    "sog_meta": "（SOG meta.json）",
-    "error": "错误："
   },
   "progress": {
     "loss": "损失：",

@@ -276,7 +276,6 @@
     "move_to_root": "Radice",
     "images": "Immagini ({}):",
     "no_images": "Nessuna immagine caricata.",
-    "use_file_browser": "Usa 'Apri Browser File' per caricare un dataset.",
     "move_node": "Sposta: %s",
     "models": "Modelli ({})",
     "filter": "Filtro...",
@@ -305,7 +304,8 @@
     "keyframe_easing.ease_in": "Ingresso morbido",
     "keyframe_easing.ease_out": "Uscita morbida",
     "keyframe_easing.ease_in_out": "Ingresso/Uscita morbidi",
-    "keyframe_label": "Fotogramma chiave {index}  ({time:.2f}s)"
+    "keyframe_label": "Fotogramma chiave {index}  ({time:.2f}s)",
+    "search": "Cerca"
   },
   "export": {
     "title": "Esporta",
@@ -403,6 +403,7 @@
     "scene_panel": "Pannello Scena",
     "show_console": "Mostra Console di Sistema",
     "hide_console": "Nascondi Console di Sistema",
+    "console": "Console",
     "background": "Sfondo",
     "color": "Colore",
     "show_coord_axes": "Mostra Assi Coordinati",
@@ -449,7 +450,17 @@
     "add_group": "+ Aggiungi Gruppo",
     "no_selection_groups": "Nessun gruppo di selezione",
     "clear": "Cancella",
-    "mesh": "Mesh"
+    "mesh": "Mesh",
+    "mesh_wireframe": "Wireframe",
+    "mesh_wireframe_color": "Colore wireframe",
+    "mesh_wireframe_width": "Spessore wireframe",
+    "mesh_light_intensity": "Intensità luce",
+    "mesh_ambient": "Ambiente",
+    "mesh_backface_culling": "Eliminazione facce posteriori",
+    "mesh_shadow_enabled": "Ombre",
+    "mesh_shadow_resolution": "Risoluzione ombre",
+    "camera_frustum_scale": "Scala frustum",
+    "voxel_size": "Dimensione voxel"
   },
   "toolbar": {
     "selection": "Selezione",
@@ -512,20 +523,6 @@
     "appearance": "Aspetto",
     "line_width": "Spessore Linea",
     "instructions": "Invio: Conferma ritaglio | Ctrl+C: Copia contenuto"
-  },
-  "file_browser": {
-    "title": "Browser File",
-    "quick_access": "Accesso Rapido",
-    "current_dir": "Cartella Corrente",
-    "home": "Home",
-    "current_path": "Percorso Corrente: %s",
-    "parent_dir": "../",
-    "directory": "[DIR]",
-    "selected": "Selezionato: %s",
-    "load_dataset": "Carica Dataset",
-    "load_sog": "Carica SOG",
-    "load_ply": "Carica PLY",
-    "enter_dir": "Entra nella Cartella"
   },
   "training_panel": {
     "start_training": "Avvia Addestramento",
@@ -616,15 +613,6 @@
   "selection_group": {
     "lock": "Blocca",
     "unlock": "Sblocca"
-  },
-  "file_browser_ext": {
-    "dataset": "[Dataset]",
-    "sog": "[SOG]",
-    "no_file_selected": "Nessun file selezionato",
-    "not_a_dataset": "(Non è un dataset)",
-    "sog_directory": "(Cartella SOG)",
-    "sog_meta": "(SOG meta.json)",
-    "error": "Errore:"
   },
   "progress": {
     "loss": "Perdita:",

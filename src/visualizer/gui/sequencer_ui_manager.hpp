@@ -4,19 +4,24 @@
 
 #pragma once
 
+#include "gui/gl_line_renderer.hpp"
 #include "gui/keyframe_scene_sync.hpp"
 #include "gui/panel_layout.hpp"
 #include "gui/sequencer_ui_state.hpp"
 #include "gui/ui_context.hpp"
 #include "rendering/gl_resources.hpp"
+#include "sequencer/rml_sequencer_panel.hpp"
 #include "sequencer/sequencer_controller.hpp"
-#include "sequencer/sequencer_panel.hpp"
 #include <chrono>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <memory>
 #include <optional>
 #include <ImGuizmo.h>
+
+namespace lfs::vis::gui {
+    class RmlSequencerOverlay;
+}
 
 namespace lfs::vis {
     class VisualizerImpl;
@@ -25,7 +30,8 @@ namespace lfs::vis {
 
         class SequencerUIManager {
         public:
-            SequencerUIManager(VisualizerImpl* viewer, panels::SequencerUIState& ui_state);
+            SequencerUIManager(VisualizerImpl* viewer, panels::SequencerUIState& ui_state,
+                               gui::RmlUIManager* rml_manager);
             ~SequencerUIManager();
 
             void setupEvents();
@@ -40,7 +46,7 @@ namespace lfs::vis {
             void renderSequencerPanel(const UIContext& ctx, const ViewportLayout& viewport);
             void renderCameraPath(const ViewportLayout& viewport);
             void renderKeyframeGizmo(const UIContext& ctx, const ViewportLayout& viewport);
-            void renderContextMenu();
+            void handleOverlayActions();
             void renderKeyframeEditOverlay(const ViewportLayout& viewport);
             void initPipPreview();
             void renderKeyframePreview(const UIContext& ctx);
@@ -49,11 +55,10 @@ namespace lfs::vis {
             VisualizerImpl* viewer_;
             panels::SequencerUIState& ui_state_;
             SequencerController controller_;
-            std::unique_ptr<SequencerPanel> panel_;
+            std::unique_ptr<RmlSequencerPanel> panel_;
+            std::unique_ptr<gui::RmlSequencerOverlay> overlay_;
             std::unique_ptr<KeyframeSceneSync> scene_sync_;
-
-            bool context_menu_open_ = false;
-            std::optional<size_t> context_menu_keyframe_;
+            GLLineRenderer line_renderer_;
 
             ImGuizmo::OPERATION keyframe_gizmo_op_ = ImGuizmo::OPERATION(0);
             bool keyframe_gizmo_active_ = false;

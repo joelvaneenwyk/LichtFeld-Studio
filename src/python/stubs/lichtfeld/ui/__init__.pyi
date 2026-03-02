@@ -8,6 +8,7 @@ from . import (
     mod as mod,
     mouse as mouse,
     ops as ops,
+    rml as rml,
     signals as signals
 )
 import lichtfeld
@@ -205,6 +206,9 @@ class PanelSpace(enum.Enum):
 
 def register_panel(cls: object) -> None:
     """Register a panel class for rendering in the UI"""
+
+def register_rml_panel(cls: object) -> None:
+    """Register an RmlUI panel class"""
 
 def unregister_panel(cls: object) -> None:
     """Unregister a panel class"""
@@ -763,6 +767,9 @@ class UILayout:
     def color_edit4(self, label: str, color: tuple[float, float, float, float]) -> tuple[bool, tuple[float, float, float, float]]:
         """Draw an RGBA color editor, returns (changed, color)"""
 
+    def color_picker3(self, label: str, color: tuple[float, float, float]) -> tuple[bool, tuple[float, float, float]]:
+        """Draw a full RGB color picker widget, returns (changed, color)"""
+
     def color_button(self, label: str, color: object, size: tuple[float, float] = (0.0, 0.0)) -> bool:
         """Draw a color swatch button, returns True if clicked"""
 
@@ -900,6 +907,9 @@ class UILayout:
 
     def get_cursor_screen_pos(self) -> tuple[float, float]:
         """Get cursor position in screen coordinates as (x, y)"""
+
+    def get_mouse_pos(self) -> tuple[float, float]:
+        """Get mouse position in screen coordinates as (x, y)"""
 
     def get_window_pos(self) -> tuple[float, float]:
         """Get window position in screen coordinates as (x, y)"""
@@ -1587,6 +1597,12 @@ def draw_tools_section() -> None:
 
 def draw_console_button() -> None:
     """Draw system console button (C++ implementation)"""
+
+def toggle_system_console() -> None:
+    """Toggle system console visibility"""
+
+def is_windows_platform() -> bool:
+    """Returns true on Windows"""
 
 def get_pivot_mode() -> int:
     """Get pivot mode (0=Origin, 1=Bounds)"""
