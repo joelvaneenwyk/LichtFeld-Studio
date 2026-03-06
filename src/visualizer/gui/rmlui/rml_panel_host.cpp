@@ -305,6 +305,19 @@ namespace lfs::vis::gui {
         const bool theme_dirty = syncThemeProperties();
         const bool size_dirty = (pw != last_fbo_w_ || ph != last_fbo_h_);
 
+        const auto compute_content_height = [this]() -> float {
+            if (content_el_) {
+                const float chrome_above =
+                    content_el_->GetAbsoluteOffset(Rml::BoxArea::Border).y -
+                    document_->GetAbsoluteOffset(Rml::BoxArea::Border).y;
+                float chrome_below = 0.0f;
+                if (scroll_el_)
+                    chrome_below = scroll_el_->GetBox().GetEdge(Rml::BoxArea::Padding, Rml::BoxEdge::Bottom);
+                return chrome_above + content_el_->GetOffsetHeight() + chrome_below;
+            }
+            return content_wrap_el_ ? content_wrap_el_->GetOffsetHeight() : 100.0f;
+        };
+
         fbo_.ensure(pw, std::min(ph, kMaxFboSize));
         if (!fbo_.valid())
             return;
@@ -314,8 +327,11 @@ namespace lfs::vis::gui {
         if (!dirty)
             return;
 
-        if (height_mode_ == HeightMode::Content &&
-            (content_dirty_ || pw != last_measure_w_)) {
+        const bool need_content_measure =
+            height_mode_ == HeightMode::Content &&
+            (pw != last_measure_w_ || last_content_height_ <= 0.0f);
+
+        if (need_content_measure) {
             last_measure_w_ = pw;
 
             const float saved_scroll = scroll_el_ ? scroll_el_->GetScrollTop() : 0;
@@ -324,18 +340,7 @@ namespace lfs::vis::gui {
             rml_context_->SetDimensions(Rml::Vector2i(pw, layout_h));
             rml_context_->Update();
 
-            float content_h;
-            if (content_el_) {
-                const float chrome_above =
-                    content_el_->GetAbsoluteOffset(Rml::BoxArea::Border).y -
-                    document_->GetAbsoluteOffset(Rml::BoxArea::Border).y;
-                float chrome_below = 0;
-                if (scroll_el_)
-                    chrome_below = scroll_el_->GetBox().GetEdge(Rml::BoxArea::Padding, Rml::BoxEdge::Bottom);
-                content_h = chrome_above + content_el_->GetOffsetHeight() + chrome_below;
-            } else {
-                content_h = content_wrap_el_ ? content_wrap_el_->GetOffsetHeight() : 100.0f;
-            }
+            const float content_h = compute_content_height();
             last_content_height_ = content_h;
             if (content_el_)
                 last_content_el_height_ = content_el_->GetOffsetHeight();
@@ -383,11 +388,18 @@ namespace lfs::vis::gui {
         last_fbo_h_ = ph;
         render_needed_ = false;
 
-        if (height_mode_ == HeightMode::Content && content_el_) {
-            const float actual_h = content_el_->GetOffsetHeight();
-            if (std::abs(actual_h - last_content_el_height_) > 2.0f)
+        if (height_mode_ == HeightMode::Content) {
+            const float prev_content_h = last_content_height_;
+            const float actual_content_h = compute_content_height();
+            last_content_height_ = actual_content_h;
+
+            if (content_el_)
+                last_content_el_height_ = content_el_->GetOffsetHeight();
+
+            if (std::abs(actual_content_h - prev_content_h) > 2.0f) {
                 content_dirty_ = true;
-            last_content_el_height_ = actual_h;
+                last_measure_w_ = 0;
+            }
         }
     }
 

@@ -578,9 +578,9 @@
 
   <!-- ── Status Section ────────────────────────────────── -->
   <div>
-    <span class="status-text status-info">{{status_mode}}</span>
-    <span class="status-text status-info">{{status_iteration}}</span>
-    <span class="status-text status-info">{{status_gaussians}}</span>
+    <span class="status-text status-info training-status-line">{{status_mode}}</span>
+    <span class="status-text status-info training-status-line">{{status_iteration}}</span>
+    <span class="status-text status-info training-status-line">{{status_gaussians}}</span>
     <div data-if="show_progress">
       <div style="position: relative;">
         <progress id="training-progress" max="1" />
@@ -588,7 +588,7 @@
       </div>
     </div>
     <div id="loss-graph-container">
-      <span id="loss-label" class="status-text status-info"></span>
+      <span id="loss-label" class="status-text status-info training-status-line"></span>
       <div class="loss-graph-wrap">
         <div class="loss-graph-ticks">
           <span id="loss-tick-max" class="loss-tick"></span>

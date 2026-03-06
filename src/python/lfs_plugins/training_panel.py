@@ -707,9 +707,10 @@ class TrainingPanel(RmlPanel):
         data_min, data_max = lf.push_loss_to_element(self._loss_graph_el, loss_data)
         if self._loss_label_el:
             self._loss_label_el.set_inner_rml(f"{tr('status.loss')}: {loss_data[-1]:.4f}")
-        fmt = "%.4f" if data_max < 0.1 else ("%.3f" if data_max < 1.0 else "%.2f")
         mid = data_min + (data_max - data_min) * 0.5
         tick_values = [data_max, mid, data_min]
+        max_abs = max(abs(data_min), abs(data_max))
+        fmt = "%.4f" if max_abs < 0.1 else ("%.3f" if max_abs < 1.0 else "%.2f")
         for el, val in zip(self._tick_els, tick_values):
             if el:
                 el.set_inner_rml(fmt % val)
