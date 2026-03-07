@@ -17,6 +17,7 @@
 #include <cassert>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -91,6 +92,12 @@ namespace lfs::python {
         // CSS properties
         bool set_property(const std::string& name, const std::string& value);
         void remove_property(const std::string& name);
+
+        // Animation
+        bool animate(const std::string& property, const std::string& target_value, float duration,
+                     const std::string& tween = "quadratic-out",
+                     const std::optional<std::string>& start_value = std::nullopt,
+                     bool remove_on_complete = false);
 
         // Events
         void add_event_listener(const std::string& event, nb::callable callback);

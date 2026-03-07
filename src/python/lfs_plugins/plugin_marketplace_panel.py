@@ -457,9 +457,8 @@ class PluginMarketplacePanel(RmlPanel):
         content = doc.get_element_by_id("formats-content")
         arrow = doc.get_element_by_id("formats-arrow")
         if content:
-            content.set_class("collapsed", not self._formats_open)
-        if arrow:
-            arrow.set_inner_rml("\u25BC" if self._formats_open else "\u25B6")
+            from . import rml_widgets as w
+            w.animate_section_toggle(content, self._formats_open, arrow)
 
     def _on_install_from_url(self, handle, event, args):
         from .manager import PluginManager

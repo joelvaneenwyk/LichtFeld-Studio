@@ -19,6 +19,24 @@ Usage in RmlPanel.on_load():
 """
 
 
+def animate_section_toggle(content_element, expanding, arrow_element=None, duration=0.15):
+    if expanding:
+        content_element.set_class("collapsed", False)
+        h = content_element.scroll_height
+        if h > 0:
+            content_element.animate("max-height", f"{h}px", duration, "quadratic-out",
+                                    "0px", remove_on_complete=True)
+    else:
+        h = content_element.client_height
+        if h <= 0:
+            h = content_element.scroll_height
+        if h > 0:
+            content_element.animate("max-height", "0px", duration, "quadratic-out", f"{h}px")
+        content_element.set_class("collapsed", True)
+    if arrow_element:
+        arrow_element.set_inner_rml("\u25BC" if expanding else "\u25B6")
+
+
 def button(container, id, label, style="", disabled=False):
     """Create a styled button element.
 

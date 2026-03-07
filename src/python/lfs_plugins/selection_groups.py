@@ -92,11 +92,10 @@ class SelectionGroupsPanel(RmlPanel):
     def _on_toggle_section(self, event):
         self._collapsed = not self._collapsed
         section = self.doc.get_element_by_id("groups-section")
-        if section:
-            section.set_class("collapsed", self._collapsed)
         arrow = self.doc.get_element_by_id("arrow-groups")
-        if arrow:
-            arrow.set_inner_rml("\u25B6" if self._collapsed else "\u25BC")
+        if section:
+            from . import rml_widgets as w
+            w.animate_section_toggle(section, not self._collapsed, arrow)
 
     def _on_add_group(self, event):
         scene = lf.get_scene()

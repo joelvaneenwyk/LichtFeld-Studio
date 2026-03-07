@@ -286,10 +286,18 @@ class RenderingPanel(RmlPanel):
         if not args:
             return
         name = str(args[0])
-        if name in self._collapsed:
+        expanding = name in self._collapsed
+        if expanding:
             self._collapsed.discard(name)
         else:
             self._collapsed.add(name)
+
+        sec_id = "sec-" + name.replace("_", "-")
+        content = self._doc.get_element_by_id(sec_id) if self._doc else None
+        if content:
+            from . import rml_widgets as w
+            w.animate_section_toggle(content, expanding)
+
         handle.dirty(f"sec_{name}_collapsed")
         handle.dirty(f"sec_{name}_arrow")
 

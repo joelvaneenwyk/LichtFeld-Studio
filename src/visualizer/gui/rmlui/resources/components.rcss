@@ -294,8 +294,13 @@ progress fill {
     text-align: center;
 }
 
+.section-content {
+    overflow: hidden;
+}
+
 .section-content.collapsed {
-    display: none;
+    display: block;
+    max-height: 0;
 }
 
 /* ── Color Controls ─────────────────────────────────────── */

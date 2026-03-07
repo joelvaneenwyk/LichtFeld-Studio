@@ -10,6 +10,8 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/DataTypeRegister.h>
 #include <RmlUi/Core/DataVariable.h>
+#include <RmlUi/Core/StyleSheetSpecification.h>
+#include <RmlUi/Core/Tween.h>
 #include <cassert>
 #include <cmath>
 #include <nanobind/stl/map.h>
@@ -407,6 +409,121 @@ namespace lfs::python {
         mark_document_dirty(elem_);
     }
 
+    namespace {
+        Rml::Tween parse_tween(const std::string& str) {
+            static const std::unordered_map<std::string, Rml::Tween::Type> types = {
+                {"none", Rml::Tween::None},
+                {"back", Rml::Tween::Back},
+                {"bounce", Rml::Tween::Bounce},
+                {"circular", Rml::Tween::Circular},
+                {"cubic", Rml::Tween::Cubic},
+                {"elastic", Rml::Tween::Elastic},
+                {"exponential", Rml::Tween::Exponential},
+                {"linear", Rml::Tween::Linear},
+                {"quadratic", Rml::Tween::Quadratic},
+                {"quartic", Rml::Tween::Quartic},
+                {"quintic", Rml::Tween::Quintic},
+                {"sine", Rml::Tween::Sine},
+            };
+            static const std::unordered_map<std::string, Rml::Tween::Direction> dirs = {
+                {"in", Rml::Tween::In},
+                {"out", Rml::Tween::Out},
+                {"inout", Rml::Tween::InOut},
+                {"in-out", Rml::Tween::InOut},
+            };
+
+            auto type = Rml::Tween::Quadratic;
+            auto dir = Rml::Tween::Out;
+
+            auto sep = str.find('-');
+            std::string type_str = str;
+            std::string dir_str;
+            if (sep != std::string::npos) {
+                type_str = str.substr(0, sep);
+                dir_str = str.substr(sep + 1);
+                // Handle "in-out" as a compound direction
+                if (dir_str == "out" || dir_str == "in") {
+                    // single direction, already split correctly
+                } else if (type_str.size() > 0) {
+                    // Could be "in-out" where type_str is e.g. "quadratic" from "quadratic-in-out"
+                    auto second_sep = dir_str.find('-');
+                    if (second_sep != std::string::npos) {
+                        dir_str = str.substr(sep + 1);
+                    }
+                }
+            }
+
+            if (auto it = types.find(type_str); it != types.end())
+                type = it->second;
+            if (!dir_str.empty()) {
+                if (auto it = dirs.find(dir_str); it != dirs.end())
+                    dir = it->second;
+            }
+
+            return Rml::Tween(type, dir);
+        }
+
+        std::optional<Rml::Property> parse_property_value(const std::string& property,
+                                                          const std::string& value) {
+            Rml::PropertyDictionary dict;
+            if (!Rml::StyleSheetSpecification::ParsePropertyDeclaration(dict, property, value))
+                return std::nullopt;
+            auto& props = dict.GetProperties();
+            if (props.empty())
+                return std::nullopt;
+            return props.begin()->second;
+        }
+
+        class AnimationCleanupListener final : public Rml::EventListener {
+        public:
+            explicit AnimationCleanupListener(std::string property) : property_(std::move(property)) {}
+
+            void ProcessEvent(Rml::Event& event) override {
+                if (event.GetParameter("property", Rml::String{}) != property_)
+                    return;
+                if (auto* el = event.GetCurrentElement()) {
+                    el->RemoveProperty(property_);
+                    el->RemoveEventListener("animationend", this, false);
+                    mark_document_dirty(el);
+                }
+            }
+
+            void OnDetach(Rml::Element*) override { delete this; }
+
+        private:
+            Rml::String property_;
+        };
+    } // namespace
+
+    bool PyRmlElement::animate(const std::string& property, const std::string& target_value,
+                               float duration, const std::string& tween,
+                               const std::optional<std::string>& start_value,
+                               bool remove_on_complete) {
+        auto target = parse_property_value(property, target_value);
+        if (!target)
+            return false;
+
+        auto tw = parse_tween(tween);
+
+        const Rml::Property* start_ptr = nullptr;
+        std::optional<Rml::Property> start;
+        if (start_value) {
+            start = parse_property_value(property, *start_value);
+            if (!start)
+                return false;
+            start_ptr = &*start;
+        }
+
+        bool ok = elem_->Animate(property, *target, duration, tw, 1, false, 0.f, start_ptr);
+        if (ok) {
+            if (remove_on_complete)
+                elem_->AddEventListener("animationend", new AnimationCleanupListener(property),
+                                        false);
+            mark_document_dirty(elem_);
+        }
+        return ok;
+    }
+
     void PyRmlElement::add_event_listener(const std::string& event, nb::callable callback) {
         auto* listener = new PyEventListener(std::move(callback));
         elem_->AddEventListener(event, listener, false);
@@ -775,6 +892,10 @@ namespace lfs::python {
             .def("get_class_names", &PyRmlElement::get_class_names)
             .def("set_property", &PyRmlElement::set_property)
             .def("remove_property", &PyRmlElement::remove_property)
+            .def("animate", &PyRmlElement::animate, nb::arg("property"),
+                 nb::arg("target_value"), nb::arg("duration"),
+                 nb::arg("tween") = "quadratic-out", nb::arg("start_value") = nb::none(),
+                 nb::arg("remove_on_complete") = false)
             .def("add_event_listener", &PyRmlElement::add_event_listener)
             .def("set_id", &PyRmlElement::set_id)
             .def_prop_rw("id", &PyRmlElement::id, &PyRmlElement::set_id)

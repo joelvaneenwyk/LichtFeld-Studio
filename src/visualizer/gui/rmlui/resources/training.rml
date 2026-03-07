@@ -58,7 +58,7 @@
     <span class="section-arrow">{{sec_basic_params_arrow}}</span>
     <span>{{label_hdr_basic_params}}</span>
   </div>
-  <div class="section-content" data-class-collapsed="sec_basic_params_collapsed">
+  <div class="section-content" id="sec-basic-params" data-class-collapsed="sec_basic_params_collapsed">
 
     <!-- Structural params (disabled when training started) -->
     <div data-class-disabled-overlay="struct_disabled">
@@ -218,14 +218,14 @@
     <span class="section-arrow">{{sec_advanced_params_arrow}}</span>
     <span>{{label_hdr_advanced_params}}</span>
   </div>
-  <div class="section-content" data-class-collapsed="sec_advanced_params_collapsed">
+  <div class="section-content" id="sec-advanced-params" data-class-collapsed="sec_advanced_params_collapsed">
 
     <!-- Dataset subsection -->
     <div class="section-header" data-event-click="toggle_section('dataset')">
       <span class="section-arrow">{{sec_dataset_arrow}}</span>
       <span>{{label_hdr_dataset}}</span>
     </div>
-    <div class="section-content" data-class-collapsed="sec_dataset_collapsed">
+    <div class="section-content" id="sec-dataset" data-class-collapsed="sec_dataset_collapsed">
       <div data-if="has_dataset" data-class-disabled-overlay="dataset_disabled">
         <div class="setting-row">
           <span class="prop-label">{{label_dataset_path}}</span>
@@ -272,7 +272,7 @@
       <span class="section-arrow">{{sec_optimization_arrow}}</span>
       <span>{{label_hdr_optimization}}</span>
     </div>
-    <div class="section-content" data-class-collapsed="sec_optimization_collapsed">
+    <div class="section-content" id="sec-optimization" data-class-collapsed="sec_optimization_collapsed">
       <div data-class-disabled-overlay="adv_disabled">
         <div class="setting-row">
           <span class="prop-label">{{label_opt_strategy}}</span>
@@ -355,7 +355,7 @@
         <span class="section-arrow">{{sec_bilateral_arrow}}</span>
         <span>{{label_hdr_bilateral}}</span>
       </div>
-      <div class="section-content" data-class-collapsed="sec_bilateral_collapsed">
+      <div class="section-content" id="sec-bilateral" data-class-collapsed="sec_bilateral_collapsed">
         <div data-class-disabled-overlay="adv_disabled">
           <div class="setting-row">
             <span class="prop-label">{{label_bilateral_grid_x}}</span>
@@ -390,7 +390,7 @@
       <span class="section-arrow">{{sec_losses_arrow}}</span>
       <span>{{label_hdr_losses}}</span>
     </div>
-    <div class="section-content" data-class-collapsed="sec_losses_collapsed">
+    <div class="section-content" id="sec-losses" data-class-collapsed="sec_losses_collapsed">
       <div data-class-disabled-overlay="adv_disabled">
         <div class="setting-row">
           <span class="prop-label">{{label_lambda_dssim}}</span>
@@ -423,7 +423,7 @@
       <span class="section-arrow">{{sec_init_arrow}}</span>
       <span>{{label_hdr_init}}</span>
     </div>
-    <div class="section-content" data-class-collapsed="sec_init_collapsed">
+    <div class="section-content" id="sec-init" data-class-collapsed="sec_init_collapsed">
       <div data-class-disabled-overlay="adv_disabled">
         <div class="setting-row">
           <span class="prop-label">{{label_init_opacity}}</span>
@@ -463,7 +463,7 @@
         <span class="section-arrow">{{sec_adc_arrow}}</span>
         <span>{{label_hdr_adc}}</span>
       </div>
-      <div class="section-content" data-class-collapsed="sec_adc_collapsed">
+      <div class="section-content" id="sec-adc" data-class-collapsed="sec_adc_collapsed">
         <div data-class-disabled-overlay="adv_disabled">
           <div class="setting-row">
             <span class="prop-label">{{label_min_opacity}}</span>
@@ -521,7 +521,7 @@
         <span class="section-arrow">{{sec_sparsity_arrow}}</span>
         <span>{{label_hdr_sparsity}}</span>
       </div>
-      <div class="section-content" data-class-collapsed="sec_sparsity_collapsed">
+      <div class="section-content" id="sec-sparsity" data-class-collapsed="sec_sparsity_collapsed">
         <div data-class-disabled-overlay="adv_disabled">
           <div class="setting-row">
             <span class="prop-label">{{label_sparsify_steps}}</span>
@@ -549,7 +549,7 @@
       <span class="section-arrow">{{sec_save_steps_arrow}}</span>
       <span>{{label_hdr_save_steps}}</span>
     </div>
-    <div class="section-content" data-class-collapsed="sec_save_steps_collapsed">
+    <div class="section-content" id="sec-save-steps" data-class-collapsed="sec_save_steps_collapsed">
       <div data-if="save_edit_mode">
         <div class="setting-row">
           <input type="text" id="num-new_step" class="number-input" data-value="new_step_str" />
