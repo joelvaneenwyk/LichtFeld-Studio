@@ -534,43 +534,28 @@ class PluginMarketplacePanel(Panel):
             self._request_uninstall_confirmation(plugin_name, card_id, ev)
 
     def _find_card_action(self, element):
-        for _ in range(6):
-            if element is None:
-                return None, None, None
+        while element is not None:
             action = element.get_attribute("data-action")
             if action:
                 card_id = element.get_attribute("data-card-id", "")
                 plugin_name = element.get_attribute("data-plugin", "")
                 return action, card_id, plugin_name or None
-            p = element.parent()
-            if p is None:
-                return None, None, None
-            element = p
+            element = element.parent()
         return None, None, None
 
     def _find_element_with_attr(self, element, attr, value):
-        for _ in range(6):
-            if element is None:
-                return None
+        while element is not None:
             if element.get_attribute(attr, "") == value:
                 return element
-            p = element.parent()
-            if p is None:
-                return None
-            element = p
+            element = element.parent()
         return None
 
     def _find_data_attr(self, element, attr):
-        for _ in range(6):
-            if element is None:
-                return None
+        while element is not None:
             val = element.get_attribute(attr, "")
             if val:
                 return val
-            p = element.parent()
-            if p is None:
-                return None
-            element = p
+            element = element.parent()
         return None
 
     def _request_uninstall_confirmation(self, name, card_id, ev):

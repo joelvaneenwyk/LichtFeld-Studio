@@ -7,6 +7,7 @@ from typing import Set
 from enum import IntEnum
 
 import lichtfeld as lf
+from . import rml_widgets
 from .types import Panel
 
 
@@ -210,16 +211,9 @@ class ExportPanel(Panel):
 
         return False
 
-    def _find_ancestor_with_attribute(self, element, attribute, stop=None):
-        while element is not None and element != stop:
-            if element.has_attribute(attribute):
-                return element
-            element = element.parent()
-        return None
-
     def _get_checkbox_from_event(self, event):
         container = event.current_target()
-        target = self._find_ancestor_with_attribute(event.target(), "data-node-name", container)
+        target = rml_widgets.find_ancestor_with_attribute(event.target(), "data-node-name", container)
         if target is None:
             return None, None
 
@@ -273,7 +267,7 @@ class ExportPanel(Panel):
 
     def _on_format_click(self, ev):
         container = ev.current_target()
-        target = self._find_ancestor_with_attribute(ev.target(), "data-format-idx", container)
+        target = rml_widgets.find_ancestor_with_attribute(ev.target(), "data-format-idx", container)
         if target is None:
             return
 

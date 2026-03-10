@@ -23,7 +23,7 @@ namespace lfs::python {
         case PanelSpace::SidePanel: return gui::PanelSpace::SidePanel;
         case PanelSpace::Floating: return gui::PanelSpace::Floating;
         case PanelSpace::ViewportOverlay: return gui::PanelSpace::ViewportOverlay;
-        case PanelSpace::Dockable: return gui::PanelSpace::Dockable;
+        case PanelSpace::Dockable: return gui::PanelSpace::Floating;
         case PanelSpace::MainPanelTab: return gui::PanelSpace::MainPanelTab;
         case PanelSpace::SceneHeader: return gui::PanelSpace::SceneHeader;
         case PanelSpace::StatusBar: return gui::PanelSpace::StatusBar;

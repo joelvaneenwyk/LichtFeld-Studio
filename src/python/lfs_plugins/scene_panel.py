@@ -7,6 +7,7 @@ import math
 import lichtfeld as lf
 
 from .types import Panel
+from .rml_keys import KI_DELETE, KI_ESCAPE, KI_F2, KI_RETURN
 from .ui.state import AppState
 
 TREE_ROW_HEIGHT_DP = 20
@@ -75,11 +76,6 @@ NODE_TYPE_ICON_PATH = {
     for node_type, icon_name in NODE_TYPE_ICONS.items()
     if icon_name
 }
-
-KI_RETURN = 72
-KI_ESCAPE = 81
-KI_DELETE = 99
-KI_F2 = 108
 
 EASING_TYPES = [
     (0, "scene.keyframe_easing.linear"),

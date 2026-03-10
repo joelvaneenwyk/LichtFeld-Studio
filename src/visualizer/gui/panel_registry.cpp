@@ -17,6 +17,52 @@
 namespace lfs::vis::gui {
 
     namespace {
+        const char* panelSpaceName(const PanelSpace space) {
+            switch (space) {
+            case PanelSpace::SidePanel: return "side_panel";
+            case PanelSpace::Floating: return "floating";
+            case PanelSpace::ViewportOverlay: return "viewport_overlay";
+            case PanelSpace::Dockable: return "dockable";
+            case PanelSpace::MainPanelTab: return "main_panel_tab";
+            case PanelSpace::SceneHeader: return "scene_header";
+            case PanelSpace::StatusBar: return "status_bar";
+            }
+            return "unknown";
+        }
+
+        PanelSpace canonicalizePanelSpace(const PanelSpace space) {
+            if (space != PanelSpace::Dockable)
+                return space;
+
+            static std::once_flag dockable_alias_once;
+            std::call_once(dockable_alias_once, [] {
+                LOG_WARN("Panel space 'DOCKABLE' is deprecated and now routes to the retained "
+                         "'FLOATING' window path. Remove the dockable fallback instead of relying on ImGui docking.");
+            });
+            return PanelSpace::Floating;
+        }
+
+        bool requiresDirectWindowSurface(const PanelInfo& panel, const PanelSpace space) {
+            return panel.parent_idname.empty() &&
+                   space == PanelSpace::Floating &&
+                   !panel.has_option(PanelOption::SELF_MANAGED);
+        }
+
+        bool validatePanelContract(const PanelInfo& panel, const PanelSpace space) {
+            if (!requiresDirectWindowSurface(panel, space))
+                return true;
+
+            if (panel.panel && panel.panel->supportsDirectDraw())
+                return true;
+
+            LOG_ERROR("Panel '{}' ({}) cannot use '{}' space without direct rendering. "
+                      "Window panels must be self-managed or implement supportsDirectDraw().",
+                      panel.label.empty() ? panel.idname : panel.label,
+                      panel.idname,
+                      panelSpaceName(space));
+            return false;
+        }
+
         bool pointInRoundedRect(const double x, const double y, const double w,
                                 const double h, const double radius) {
             if (x < 0.0 || y < 0.0 || x >= w || y >= h)
@@ -48,32 +94,6 @@ namespace lfs::vis::gui {
                    inside_corner(0.0, h - clamped_radius, clamped_radius,
                                  clamped_radius, h - clamped_radius);
         }
-
-        void warnLegacyImguiWindowWrapperOnce(const PanelSpace space) {
-            static std::once_flag floating_once;
-            static std::once_flag dockable_once;
-
-            std::once_flag* flag = nullptr;
-            const char* space_name = nullptr;
-            switch (space) {
-            case PanelSpace::Floating:
-                flag = &floating_once;
-                space_name = "floating";
-                break;
-            case PanelSpace::Dockable:
-                flag = &dockable_once;
-                space_name = "dockable";
-                break;
-            default:
-                return;
-            }
-
-            std::call_once(*flag, [space_name] {
-                LOG_WARN("Rml migration: the legacy ImGui {} panel wrapper path is still active. "
-                         "Migrate those panels to direct or self-managed rendering before deleting this fallback.",
-                         space_name);
-            });
-        }
     } // namespace
 
     PanelRegistry& PanelRegistry::instance() {
@@ -96,10 +116,14 @@ namespace lfs::vis::gui {
         panel.float_stack_order = alloc_float_stack_order_locked();
     }
 
-    void PanelRegistry::register_panel(PanelInfo info) {
+    bool PanelRegistry::register_panel(PanelInfo info) {
         std::lock_guard lock(mutex_);
         assert(info.panel);
         assert(!info.idname.empty());
+
+        info.space = canonicalizePanelSpace(info.space);
+        if (!validatePanelContract(info, info.space))
+            return false;
 
         info.original_width = info.initial_width;
         info.original_height = info.initial_height;
@@ -114,7 +138,7 @@ namespace lfs::vis::gui {
                     info.float_stack_order = p.float_stack_order;
                 ensure_float_stack_order_locked(info);
                 p = std::move(info);
-                return;
+                return true;
             }
         }
 
@@ -125,6 +149,7 @@ namespace lfs::vis::gui {
                 return a.order < b.order;
             return a.label < b.label;
         });
+        return true;
     }
 
     void PanelRegistry::unregister_panel(const std::string& idname) {
@@ -576,24 +601,12 @@ namespace lfs::vis::gui {
                         }
                         snap.panel->setForcedHeight(0.0f);
                     } else {
-                        warnLegacyImguiWindowWrapperOnce(PanelSpace::Floating);
-                        if (snap.initial_width > 0 || snap.initial_height > 0)
-                            ImGui::SetNextWindowSize(ImVec2(snap.initial_width, snap.initial_height), ImGuiCond_Appearing);
-                        bool open = true;
-                        if (ImGui::Begin(snap.label.c_str(), &open)) {
-                            if (!ImGui::IsWindowDocked()) {
-                                widgets::DrawFloatingWindowShadow(ImGui::GetWindowPos(), ImGui::GetWindowSize(),
-                                                                  ImGui::GetStyle().WindowRounding);
-                            }
-                            with_panel_input(snap.panel, [&] { snap.panel->draw(ctx); });
-                        }
-                        ImGui::End();
-                        if (!open) {
-                            std::lock_guard lock(mutex_);
-                            if (snap.index < panels_.size() && panels_[snap.index].idname == snap.idname) {
-                                panels_[snap.index].enabled = false;
-                            }
-                        }
+                        LOG_ERROR("Panel '{}' ({}) reached floating draw without direct rendering. "
+                                  "Disabling the invalid panel instance.",
+                                  snap.label, snap.idname);
+                        std::lock_guard lock(mutex_);
+                        if (snap.index < panels_.size() && panels_[snap.index].idname == snap.idname)
+                            panels_[snap.index].error_disabled = true;
                     }
                     break;
                 }
@@ -614,28 +627,12 @@ namespace lfs::vis::gui {
                     break;
 
                 case PanelSpace::Dockable: {
-                    if (snap.has_option(PanelOption::SELF_MANAGED)) {
-                        with_panel_input(snap.panel, [&] { snap.panel->draw(ctx); });
-                    } else {
-                        warnLegacyImguiWindowWrapperOnce(PanelSpace::Dockable);
-                        if (snap.initial_width > 0 || snap.initial_height > 0)
-                            ImGui::SetNextWindowSize(ImVec2(snap.initial_width, snap.initial_height), ImGuiCond_Appearing);
-                        bool open = true;
-                        if (ImGui::Begin(snap.label.c_str(), &open)) {
-                            if (!ImGui::IsWindowDocked()) {
-                                widgets::DrawFloatingWindowShadow(ImGui::GetWindowPos(), ImGui::GetWindowSize(),
-                                                                  ImGui::GetStyle().WindowRounding);
-                            }
-                            with_panel_input(snap.panel, [&] { snap.panel->draw(ctx); });
-                        }
-                        ImGui::End();
-                        if (!open) {
-                            std::lock_guard lock(mutex_);
-                            if (snap.index < panels_.size() && panels_[snap.index].idname == snap.idname) {
-                                panels_[snap.index].enabled = false;
-                            }
-                        }
-                    }
+                    LOG_ERROR("Panel '{}' ({}) is still registered in the retired dockable space. "
+                              "Disabling the invalid panel instance.",
+                              snap.label, snap.idname);
+                    std::lock_guard lock(mutex_);
+                    if (snap.index < panels_.size() && panels_[snap.index].idname == snap.idname)
+                        panels_[snap.index].error_disabled = true;
                     break;
                 }
                 case PanelSpace::StatusBar:
@@ -871,6 +868,7 @@ namespace lfs::vis::gui {
     }
 
     bool PanelRegistry::has_panels(PanelSpace space) const {
+        space = canonicalizePanelSpace(space);
         std::lock_guard lock(mutex_);
         for (const auto& p : panels_) {
             if (p.space == space && p.enabled && !p.error_disabled && p.parent_idname.empty())
@@ -879,24 +877,8 @@ namespace lfs::vis::gui {
         return false;
     }
 
-    bool PanelRegistry::has_legacy_imgui_window_wrapped_panels(PanelSpace space) const {
-        std::lock_guard lock(mutex_);
-        for (const auto& p : panels_) {
-            if (p.space != space || !p.enabled || p.error_disabled || !p.parent_idname.empty())
-                continue;
-
-            if (p.has_option(PanelOption::SELF_MANAGED))
-                continue;
-
-            if (space == PanelSpace::Floating && p.panel && p.panel->supportsDirectDraw())
-                continue;
-
-            return true;
-        }
-        return false;
-    }
-
     std::vector<PanelSummary> PanelRegistry::get_panels_for_space(PanelSpace space) {
+        space = canonicalizePanelSpace(space);
         std::lock_guard lock(mutex_);
         std::vector<PanelSummary> result;
         for (const auto& p : panels_) {
@@ -921,6 +903,7 @@ namespace lfs::vis::gui {
     }
 
     std::vector<std::string> PanelRegistry::get_panel_names(PanelSpace space) const {
+        space = canonicalizePanelSpace(space);
         std::lock_guard lock(mutex_);
         std::vector<std::string> names;
         for (const auto& p : panels_) {
@@ -1017,8 +1000,11 @@ namespace lfs::vis::gui {
 
     bool PanelRegistry::set_panel_space(const std::string& idname, PanelSpace new_space) {
         std::lock_guard lock(mutex_);
+        new_space = canonicalizePanelSpace(new_space);
         for (auto& p : panels_) {
             if (p.idname == idname) {
+                if (!validatePanelContract(p, new_space))
+                    return false;
                 p.space = new_space;
                 ensure_float_stack_order_locked(p);
                 return true;
@@ -1044,6 +1030,10 @@ namespace lfs::vis::gui {
 
         for (auto& p : panels_) {
             if (p.idname == idname) {
+                PanelInfo candidate = p;
+                candidate.parent_idname = parent_idname;
+                if (!validatePanelContract(candidate, candidate.space))
+                    return false;
                 p.parent_idname = parent_idname;
                 return true;
             }

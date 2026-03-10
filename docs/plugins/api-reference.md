@@ -53,13 +53,13 @@ Registering a panel with the same `idname` as an existing panel replaces it (see
 
 ### Panel spaces
 
-`MAIN_PANEL_TAB`, `SIDE_PANEL`, `VIEWPORT_OVERLAY`, `SCENE_HEADER`, `FLOATING`, `DOCKABLE`, `STATUS_BAR`
+`MAIN_PANEL_TAB`, `SIDE_PANEL`, `VIEWPORT_OVERLAY`, `SCENE_HEADER`, `FLOATING`, `DOCKABLE` (alias of `FLOATING`), `STATUS_BAR`
 
 ### Retained shell behavior
 
 If a panel uses retained features and `template` is empty, LichtFeld selects a shell automatically:
 
-- `FLOATING` -> `rmlui/floating_window.rml`
+- `FLOATING` and `DOCKABLE` -> `rmlui/floating_window.rml`
 - `STATUS_BAR` -> `rmlui/status_bar_panel.rml`
 - Other retained panel spaces -> `rmlui/docked_panel.rml`
 

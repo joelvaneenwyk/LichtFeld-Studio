@@ -233,7 +233,7 @@ When a panel uses retained features, LichtFeld chooses a shell automatically if 
 
 | Space | Default retained shell |
 |---|---|
-| `FLOATING` | `rmlui/floating_window.rml` |
+| `FLOATING`, `DOCKABLE` | `rmlui/floating_window.rml` |
 | `STATUS_BAR` | `rmlui/status_bar_panel.rml` |
 | Other retained panel spaces | `rmlui/docked_panel.rml` |
 
@@ -323,7 +323,7 @@ See the complete multi-file example in [`examples/03_hybrid_plugin/`](examples/0
 | `VIEWPORT_OVERLAY` | Drawn over the 3D viewport. |
 | `SCENE_HEADER` | Header area above the scene tree. |
 | `FLOATING` | Free-floating window. |
-| `DOCKABLE` | Dockable window. |
+| `DOCKABLE` | Deprecated alias of `FLOATING`. |
 | `STATUS_BAR` | Bottom status bar. |
 
 ### Embedding in an existing tab

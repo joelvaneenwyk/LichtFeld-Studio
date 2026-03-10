@@ -106,10 +106,10 @@ namespace lfs::vis::gui {
             auto py_doc = lfs::python::PyRmlDocument(doc);
             panel_instance_.attr("on_mount")(py_doc);
             content_dirty_ = true;
+            loaded_ = true;
         } catch (const std::exception& e) {
             LOG_ERROR("Panel on_mount error: {}", e.what());
         }
-        loaded_ = true;
     }
 
     Rml::ElementDocument* RmlPythonPanelAdapter::ensureDocumentInitialized() {
@@ -126,8 +126,10 @@ namespace lfs::vis::gui {
         if (!doc)
             return nullptr;
 
-        if (!loaded_)
+        if (!loaded_) {
+            assert(model_bound_);
             callOnLoad(doc);
+        }
 
         if (loaded_ && last_language_.empty())
             last_language_ = lfs::event::LocalizationManager::getInstance().getCurrentLanguage();
@@ -185,6 +187,8 @@ namespace lfs::vis::gui {
                                                     const PanelDrawContext* ctx) {
         if (!has_draw_ || !doc || !lfs::python::can_acquire_gil())
             return;
+
+        assert(loaded_);
 
         if (lfs::python::bridge().prepare_ui)
             lfs::python::bridge().prepare_ui();
@@ -270,6 +274,7 @@ namespace lfs::vis::gui {
         const bool should_run_update = scene_changed || pending_dirty || update_due;
 
         if (should_run_update) {
+            assert(loaded_);
             const lfs::python::GilAcquire gil;
             auto py_doc = lfs::python::PyRmlDocument(doc);
 

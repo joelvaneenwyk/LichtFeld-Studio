@@ -987,40 +987,6 @@ namespace lfs::vis::gui {
         updateInputOverrides(frame_input, mouse_in_viewport);
 
         auto& reg = PanelRegistry::instance();
-        const bool has_dockable_panels = reg.has_panels(PanelSpace::Dockable);
-        const bool needs_imgui_dockspace =
-            reg.has_legacy_imgui_window_wrapped_panels(PanelSpace::Dockable);
-        if (needs_imgui_dockspace) {
-            const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
-            ImGui::SetNextWindowPos(main_viewport->WorkPos);
-            ImGui::SetNextWindowSize(main_viewport->WorkSize);
-            ImGui::SetNextWindowViewport(main_viewport->ID);
-
-            ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDocking |
-                                            ImGuiWindowFlags_NoTitleBar |
-                                            ImGuiWindowFlags_NoCollapse |
-                                            ImGuiWindowFlags_NoResize |
-                                            ImGuiWindowFlags_NoMove |
-                                            ImGuiWindowFlags_NoBringToFrontOnFocus |
-                                            ImGuiWindowFlags_NoNavFocus |
-                                            ImGuiWindowFlags_NoBackground;
-
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-
-            ImGui::Begin("DockSpace", nullptr, window_flags);
-            ImGui::PopStyleVar(3);
-
-            // DockSpace ID
-            ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
-
-            // Create dockspace
-            ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode;
-            ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
-
-            ImGui::End();
-        }
 
         if (!ui_hidden_) {
             const auto* mvp = ImGui::GetMainViewport();
@@ -1206,8 +1172,6 @@ namespace lfs::vis::gui {
         PanelInputState floating_input = panel_input;
         floating_input.bg_draw_list = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
         reg.draw_panels(PanelSpace::Floating, draw_ctx, &floating_input);
-        if (has_dockable_panels)
-            reg.draw_panels(PanelSpace::Dockable, draw_ctx, &panel_input);
 
         applyFrameInputCapture();
 

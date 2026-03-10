@@ -19,6 +19,15 @@ Usage in Panel.on_mount():
 """
 
 
+def find_ancestor_with_attribute(element, attribute, stop=None):
+    """Walk up the DOM tree looking for an element with the given attribute."""
+    while element is not None and element != stop:
+        if element.has_attribute(attribute):
+            return element
+        element = element.parent()
+    return None
+
+
 def _section_duration(height_px, duration):
     if duration is not None:
         return max(0.08, float(duration))

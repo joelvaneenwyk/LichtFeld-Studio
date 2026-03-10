@@ -165,17 +165,12 @@ class SelectionGroupsPanel(Panel):
         self._handle.update_record_list("groups", records)
 
     def _find_action_element(self, element):
-        for _ in range(5):
-            if element is None:
-                return None, None
+        while element is not None:
             action = element.get_attribute("data-action")
             if action:
                 gid = element.get_attribute("data-gid", "-1")
                 return action, int(gid)
-            parent = element.parent()
-            if parent is None:
-                return None, None
-            element = parent
+            element = element.parent()
         return None, None
 
     def _on_group_click(self, event):

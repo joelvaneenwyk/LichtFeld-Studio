@@ -7,13 +7,11 @@ from pathlib import Path
 import lichtfeld as lf
 
 from .types import Panel
+from .rml_keys import KI_ESCAPE, KI_RETURN
 
 
 _dataset_import_panel = None
 _resume_checkpoint_panel = None
-
-KI_ESCAPE = 81
-KI_RETURN = 72
 
 
 def open_dataset_import_panel(dataset_path: str) -> bool:

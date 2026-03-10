@@ -424,9 +424,7 @@ class InputSettingsPanel(Panel):
             self._last_state_key = None
 
     def _find_btn_action(self, element):
-        for _ in range(6):
-            if element is None:
-                return None, None, None
+        while element is not None:
             action = element.get_attribute("data-btn-action")
             if action:
                 aid_str = element.get_attribute("data-action-id")
@@ -437,8 +435,5 @@ class InputSettingsPanel(Panel):
                     return action, int(aid_str), int(mid_str)
                 except (ValueError, TypeError):
                     return None, None, None
-            p = element.parent()
-            if p is None:
-                return None, None, None
-            element = p
+            element = element.parent()
         return None, None, None

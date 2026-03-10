@@ -1096,3 +1096,35 @@ class TestGPUOperations:
         cuda_t = lf.Tensor.zeros([100, 3], dtype="float32", device="cuda")
         g.gpu_data = cuda_t
         assert str(g.gpu_data.device) == "cuda"
+
+
+class TestPanelSpaceAliases:
+    """Regression tests for panel-space compatibility aliases."""
+
+    def test_dockable_aliases_to_floating_names(self, lf):
+        if not hasattr(lf, "ui") or not hasattr(lf.ui, "Panel"):
+            pytest.skip("panel API not available")
+
+        panel_id = "tests.dockable_alias_panel"
+
+        class DockableAliasPanel(lf.ui.Panel):
+            idname = panel_id
+            label = "Dockable Alias"
+            space = "DOCKABLE"
+            options = {"DEFAULT_CLOSED"}
+
+            def draw(self, ui):
+                del ui
+
+        lf.register_class(DockableAliasPanel)
+        try:
+            floating_names = set(lf.ui.get_panel_names("FLOATING"))
+            if panel_id not in floating_names:
+                pytest.skip("floating window registration requires an active retained UI manager")
+
+            dockable_names = set(lf.ui.get_panel_names("DOCKABLE"))
+            assert panel_id in dockable_names
+            assert lf.ui.set_panel_space(panel_id, "DOCKABLE") is True
+            assert panel_id in set(lf.ui.get_panel_names("FLOATING"))
+        finally:
+            lf.unregister_class(DockableAliasPanel)

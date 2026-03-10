@@ -8,6 +8,7 @@ from typing import Iterable
 
 import lichtfeld as lf
 
+from . import rml_widgets
 from .types import Panel
 
 
@@ -280,16 +281,9 @@ class Mesh2SplatPanel(Panel):
         )
         return True
 
-    def _find_ancestor_with_attribute(self, element, attribute, stop=None):
-        while element is not None and element != stop:
-            if element.has_attribute(attribute):
-                return element
-            element = element.parent()
-        return None
-
     def _on_mesh_click(self, event):
         container = event.current_target()
-        target = self._find_ancestor_with_attribute(event.target(), "data-mesh-name", container)
+        target = rml_widgets.find_ancestor_with_attribute(event.target(), "data-mesh-name", container)
         if target is None:
             return
 
@@ -303,7 +297,7 @@ class Mesh2SplatPanel(Panel):
 
     def _on_resolution_click(self, event):
         container = event.current_target()
-        target = self._find_ancestor_with_attribute(event.target(), "data-resolution-index", container)
+        target = rml_widgets.find_ancestor_with_attribute(event.target(), "data-resolution-index", container)
         if target is None:
             return
 

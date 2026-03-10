@@ -9,32 +9,17 @@ from typing import Optional
 
 import lichtfeld as lf
 from .types import Panel
+from .rml_keys import (
+    KI_1, KI_ADD, KI_DOWN, KI_END, KI_ESCAPE, KI_F, KI_HOME, KI_I, KI_LEFT,
+    KI_M, KI_OEM_MINUS, KI_OEM_PLUS, KI_R, KI_RIGHT, KI_SPACE, KI_SUBTRACT,
+    KI_T, KI_UP,
+)
 
 ZOOM_MIN = 0.1
 ZOOM_MAX = 10.0
 PRECISE_SCROLL_STEP = 32.0
 CROSSFADE_DURATION = 0.2
 SCROLL_DURATION = 0.15
-
-# RmlUI key identifiers (Rml::Input::KeyIdentifier)
-KI_SPACE = 1
-KI_1 = 3
-KI_F = 17
-KI_I = 20
-KI_M = 24
-KI_R = 29
-KI_T = 31
-KI_OEM_PLUS = 39
-KI_OEM_MINUS = 41
-KI_ADD = 63
-KI_SUBTRACT = 65
-KI_ESCAPE = 81
-KI_END = 88
-KI_HOME = 89
-KI_LEFT = 90
-KI_UP = 91
-KI_RIGHT = 92
-KI_DOWN = 93
 
 _CHANNEL_NAMES = {1: "Gray", 2: "Gray+A", 3: "RGB", 4: "RGBA"}
 

@@ -9,8 +9,8 @@
 #include "python_panel_adapter.hpp"
 #include "rml_im_mode_panel_adapter.hpp"
 #include "rml_python_panel_adapter.hpp"
-#include "visualizer/gui/rmlui/rml_theme.hpp"
 #include "visualizer/gui/panel_registry.hpp"
+#include "visualizer/gui/rmlui/rml_theme.hpp"
 
 #include <algorithm>
 #include <array>
@@ -45,6 +45,16 @@ namespace lfs::python {
             if (str == "FLOATING")
                 return PanelSpace::Floating;
             return std::nullopt;
+        }
+
+        PanelSpace normalize_panel_space(const PanelSpace space, const std::string& panel_idname) {
+            if (space != PanelSpace::Dockable)
+                return space;
+
+            LOG_WARN("Panel '{}' requested DOCKABLE space. Docking has been retired, so the panel "
+                     "will use the retained FLOATING window path instead.",
+                     panel_idname);
+            return PanelSpace::Floating;
         }
 
         nb::object panel_base_type() {
@@ -252,6 +262,8 @@ namespace lfs::python {
             return;
         }
 
+        space = normalize_panel_space(space, idname);
+
         LOG_DEBUG("Panel '{}' registered (space={})", label, static_cast<int>(space));
 
         nb::object instance;
@@ -273,6 +285,13 @@ namespace lfs::python {
         const bool use_retained = uses_retained_panel(
             panel_class, panel_base, space, template_name, style, height_mode);
         const bool use_rml = (space != PanelSpace::ViewportOverlay) && lfs::python::get_rml_manager();
+
+        if (space == PanelSpace::Floating && !use_rml) {
+            LOG_ERROR("Panel '{}' ({}) requires the retained UI manager for FLOATING windows. "
+                      "Window panels no longer fall back to the legacy ImGui wrapper path.",
+                      label, idname);
+            return;
+        }
 
         std::shared_ptr<gui::IPanel> adapter;
         if (use_retained) {
@@ -322,7 +341,8 @@ namespace lfs::python {
         } catch (...) {
         }
 
-        gui::PanelRegistry::instance().register_panel(std::move(info));
+        if (!gui::PanelRegistry::instance().register_panel(std::move(info)))
+            return;
         panels_[idname] = {adapter, module_prefix};
     }
 
@@ -476,7 +496,7 @@ namespace lfs::python {
                 if (!ps) {
                     LOG_WARN("Unknown panel space '{}' for panel '{}', defaulting to MainPanelTab", space_str, idname);
                 }
-                auto gui_space = to_gui_space(ps.value_or(PanelSpace::MainPanelTab));
+                auto gui_space = to_gui_space(normalize_panel_space(ps.value_or(PanelSpace::MainPanelTab), idname));
                 return gui::PanelRegistry::instance().set_panel_space(idname, gui_space);
             },
             nb::arg("idname"), nb::arg("space"), "Set the panel space (where it renders)");

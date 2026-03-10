@@ -14,7 +14,7 @@ import lichtfeld as lf
 class MyPanel(lf.ui.Panel):
     idname = "my_plugin.panel"
     label = "My Custom Panel"
-    space = "FLOATING"      # MAIN_PANEL_TAB, FLOATING, VIEWPORT_OVERLAY, DOCKABLE, SCENE_HEADER, STATUS_BAR
+    space = "FLOATING"      # MAIN_PANEL_TAB, FLOATING, VIEWPORT_OVERLAY, DOCKABLE (alias of FLOATING), SCENE_HEADER, STATUS_BAR
     parent = ""             # e.g. "lfs.rendering" to embed inside a tab
     order = 100
     options = set()           # e.g. {"DEFAULT_CLOSED"}
@@ -46,7 +46,7 @@ lf.register_class(MyPanel)
 | `MAIN_PANEL_TAB` | Own tab in the right panel (default for plugins) |
 | `FLOATING` | Standalone window |
 | `VIEWPORT_OVERLAY` | Draw over viewport |
-| `DOCKABLE` | Dockable window |
+| `DOCKABLE` | Deprecated alias of `FLOATING` |
 | `SIDE_PANEL` | Sidebar panel (legacy — prefer `parent` attribute) |
 | `SCENE_HEADER` | Scene panel/header area |
 | `STATUS_BAR` | Bottom status bar |
