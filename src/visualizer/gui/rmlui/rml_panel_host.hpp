@@ -31,7 +31,8 @@ namespace lfs::vis::gui {
 
     class LFS_VIS_API RmlPanelHost {
     public:
-        RmlPanelHost(RmlUIManager* manager, std::string context_name, std::string rml_path);
+        RmlPanelHost(RmlUIManager* manager, std::string context_name, std::string rml_path,
+                     std::string inline_rcss = {});
         ~RmlPanelHost();
 
         RmlPanelHost(const RmlPanelHost&) = delete;
@@ -118,6 +119,7 @@ namespace lfs::vis::gui {
         RmlUIManager* manager_;
         std::string context_name_;
         std::string rml_path_;
+        std::string inline_rcss_;
         Rml::Context* rml_context_ = nullptr;
         Rml::ElementDocument* document_ = nullptr;
         Rml::Element* frame_el_ = nullptr;
@@ -133,6 +135,7 @@ namespace lfs::vis::gui {
         bool content_dirty_ = true;
 
         std::string base_rcss_;
+        bool base_rcss_loaded_ = false;
         std::size_t last_theme_signature_ = 0;
         bool has_theme_signature_ = false;
         bool has_text_focus_ = false;

@@ -368,7 +368,19 @@ add_custom_target(lfs_plugins_copy ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/lfs_plugins ${CMAKE_CURRENT_BINARY_DIR}/lfs_plugins
     COMMENT "Copying lfs_plugins Python module"
 )
-add_dependencies(lfs_py lfs_plugins_copy)
+
+# Copy top-level Python support modules required by the extension at import time.
+add_custom_target(lfs_python_support_copy ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/lfs_ui_panel.py
+        ${CMAKE_CURRENT_BINARY_DIR}/lfs_ui_panel.py
+    COMMENT "Copying Python support modules"
+)
+
+add_dependencies(lfs_py lfs_plugins_copy lfs_python_support_copy)
+if(TARGET lichtfeld_stub)
+    add_dependencies(lichtfeld_stub lfs_python_support_copy)
+endif()
 
 # UV package manager for Python package installation support
 include(${CMAKE_SOURCE_DIR}/cmake/FetchUV.cmake)
@@ -409,10 +421,16 @@ if(BUILD_PORTABLE)
         DESTINATION "${CMAKE_INSTALL_BINDIR}"
         FILES_MATCHING PATTERN "*.py"
     )
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/lfs_ui_panel.py"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    )
 else()
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lfs_plugins"
         DESTINATION "${PYTHON_INSTALL_DIR}"
         FILES_MATCHING PATTERN "*.py"
+    )
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/lfs_ui_panel.py"
+        DESTINATION "${PYTHON_INSTALL_DIR}"
     )
 endif()
 

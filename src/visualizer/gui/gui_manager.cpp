@@ -645,9 +645,11 @@ namespace lfs::vis::gui {
         rml_status_bar_.init(&rmlui_manager_);
 
         lfs::python::RmlPanelHostOps ops{};
-        ops.create = [](void* mgr, const char* name, const char* rml) -> void* {
+        ops.create = [](void* mgr, const char* name, const char* rml,
+                        const char* inline_rcss) -> void* {
             return new RmlPanelHost(static_cast<RmlUIManager*>(mgr),
-                                    std::string(name), std::string(rml));
+                                    std::string(name), std::string(rml),
+                                    inline_rcss ? std::string(inline_rcss) : std::string{});
         };
         ops.destroy = [](void* host) {
             if (lfs::python::on_gl_thread()) {
@@ -770,6 +772,7 @@ namespace lfs::vis::gui {
         rml_right_panel_.shutdown();
         rml_shell_frame_.shutdown();
         startup_overlay_.shutdown();
+        PanelRegistry::instance().unregister_all_non_native();
         rmlui_manager_.shutdown();
 
         if (need_gil)

@@ -7,7 +7,7 @@ import time
 
 import lichtfeld as lf
 
-from .types import RmlPanel
+from .types import Panel
 from .ui.state import AppState
 
 
@@ -224,13 +224,13 @@ def _hex_to_color(h):
         return None
 
 
-class TrainingPanel(RmlPanel):
+class TrainingPanel(Panel):
     idname = "lfs.training"
     label = "Training"
     space = "MAIN_PANEL_TAB"
     order = 20
-    rml_template = "rmlui/training.rml"
-    rml_height_mode = "fill"
+    template = "rmlui/training.rml"
+    height_mode = "fill"
     update_interval_ms = 16
 
     def __init__(self):
@@ -586,7 +586,7 @@ class TrainingPanel(RmlPanel):
         model.bind_event("remove_step", self._on_remove_step_event)
         model.bind_event("num_step", self._on_num_step)
 
-    def on_load(self, doc):
+    def on_mount(self, doc):
         self._doc = doc
         self._popup_el = doc.get_element_by_id("color-picker-popup")
         if self._popup_el:
@@ -701,7 +701,7 @@ class TrainingPanel(RmlPanel):
             self._sync_text_bufs()
             self._handle.dirty_all()
 
-    def on_unload(self, doc):
+    def on_unmount(self, doc):
         doc.remove_data_model("training")
         self._handle = None
         self._doc = None

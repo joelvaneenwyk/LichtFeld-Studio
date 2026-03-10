@@ -3,19 +3,19 @@
 """About panel showing application info and build details."""
 
 import lichtfeld as lf
-from .types import RmlPanel
+from .types import Panel
 
 
-class AboutPanel(RmlPanel):
+class AboutPanel(Panel):
     """Floating panel displaying application information."""
 
     idname = "lfs.about"
     label = "About"
     space = "FLOATING"
     order = 100
-    rml_template = "rmlui/about.rml"
-    rml_height_mode = "content"
-    initial_width = 400
+    template = "rmlui/about.rml"
+    height_mode = "content"
+    size = (400, 0)
 
     def on_bind_model(self, ctx):
         model = ctx.create_data_model("about")
@@ -38,8 +38,8 @@ class AboutPanel(RmlPanel):
 
         self._handle = model.get_handle()
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
 
         repo_el = doc.get_element_by_id("link-repo")
         if repo_el:

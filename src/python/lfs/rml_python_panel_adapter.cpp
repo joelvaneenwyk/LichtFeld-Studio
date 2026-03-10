@@ -12,23 +12,9 @@
 
 #include <algorithm>
 #include <cassert>
-#include <mutex>
-#include <unordered_set>
+#include <imgui.h>
 
 namespace lfs::vis::gui {
-
-    namespace {
-        void warnLegacyRmlImguiPathOnce(const char* feature) {
-            static std::mutex mutex;
-            static std::unordered_set<std::string> warned_features;
-            std::lock_guard lock(mutex);
-            if (warned_features.emplace(feature).second) {
-                LOG_WARN("Rml transition: '{}' is a legacy ImGui compatibility path. "
-                         "Keep it for compatibility, but do not add new usage.",
-                         feature);
-            }
-        }
-    } // namespace
 
     bool RmlPythonPanelAdapter::ensureHost() {
         if (host_)
@@ -37,7 +23,7 @@ namespace lfs::vis::gui {
         const auto& ops = lfs::python::get_rml_panel_host_ops();
         assert(ops.create);
 
-        host_ = ops.create(manager_, context_name_.c_str(), rml_path_.c_str());
+        host_ = ops.create(manager_, context_name_.c_str(), rml_path_.c_str(), style_.c_str());
         if (!host_)
             return false;
 
@@ -49,12 +35,6 @@ namespace lfs::vis::gui {
     }
 
     void RmlPythonPanelAdapter::cachePythonCapabilities() {
-        if (!draw_imgui_checked_) {
-            has_draw_imgui_ = nb::hasattr(panel_instance_, "draw_imgui");
-            draw_imgui_checked_ = true;
-            if (has_draw_imgui_)
-                warnLegacyRmlImguiPathOnce("RmlPanel.draw_imgui");
-        }
         if (!bind_model_checked_) {
             has_bind_model_ = nb::hasattr(panel_instance_, "on_bind_model");
             bind_model_checked_ = true;
@@ -65,7 +45,7 @@ namespace lfs::vis::gui {
                 if (nb::hasattr(panel_instance_, "update_interval_ms"))
                     update_interval_ms_ = std::max(0, nb::cast<int>(panel_instance_.attr("update_interval_ms")));
             } catch (const std::exception& e) {
-                LOG_ERROR("RmlPanel update_interval_ms error: {}", e.what());
+                LOG_ERROR("Panel update_interval_ms error: {}", e.what());
             }
         }
     }
@@ -95,7 +75,7 @@ namespace lfs::vis::gui {
             panel_instance_.attr("on_bind_model")(py_ctx);
             model_bound_ = true;
         } catch (const std::exception& e) {
-            LOG_ERROR("RmlPanel on_bind_model error: {}", e.what());
+            LOG_ERROR("Panel on_bind_model error: {}", e.what());
         }
     }
 
@@ -104,14 +84,14 @@ namespace lfs::vis::gui {
             return;
 
         const lfs::python::GilAcquire gil;
-        if (!nb::hasattr(panel_instance_, "on_unload"))
+        if (!nb::hasattr(panel_instance_, "on_unmount"))
             return;
 
         try {
             auto py_doc = lfs::python::PyRmlDocument(doc);
-            panel_instance_.attr("on_unload")(py_doc);
+            panel_instance_.attr("on_unmount")(py_doc);
         } catch (const std::exception& e) {
-            LOG_ERROR("RmlPanel on_unload error: {}", e.what());
+            LOG_ERROR("Panel on_unmount error: {}", e.what());
         }
     }
 
@@ -124,10 +104,10 @@ namespace lfs::vis::gui {
         lfs::python::RmlDocumentRegistry::instance().register_document(context_name_, doc);
         try {
             auto py_doc = lfs::python::PyRmlDocument(doc);
-            panel_instance_.attr("on_load")(py_doc);
+            panel_instance_.attr("on_mount")(py_doc);
             content_dirty_ = true;
         } catch (const std::exception& e) {
-            LOG_ERROR("RmlPanel on_load error: {}", e.what());
+            LOG_ERROR("Panel on_mount error: {}", e.what());
         }
         loaded_ = true;
     }
@@ -173,7 +153,7 @@ namespace lfs::vis::gui {
         bindModelIfNeeded();
 
         if (!ops.reload_document(host_)) {
-            LOG_ERROR("RmlPanel reload_document failed for '{}'", context_name_);
+            LOG_ERROR("Panel reload_document failed for '{}'", context_name_);
             loaded_ = false;
             return false;
         }
@@ -199,6 +179,62 @@ namespace lfs::vis::gui {
         const auto& ops = lfs::python::get_rml_panel_host_ops();
         if (ops.prepare_layout)
             ops.prepare_layout(host_, w, h);
+    }
+
+    void RmlPythonPanelAdapter::drawImmediateLayout(Rml::ElementDocument* doc,
+                                                    const PanelDrawContext* ctx) {
+        if (!has_draw_ || !doc || !lfs::python::can_acquire_gil())
+            return;
+
+        if (lfs::python::bridge().prepare_ui)
+            lfs::python::bridge().prepare_ui();
+
+        lfs::python::MouseState mouse;
+        if (current_input_) {
+            mouse.pos_x = current_input_->mouse_x;
+            mouse.pos_y = current_input_->mouse_y;
+            if (have_prev_mouse_) {
+                mouse.delta_x = mouse.pos_x - prev_mouse_x_;
+                mouse.delta_y = mouse.pos_y - prev_mouse_y_;
+            }
+            mouse.wheel = current_input_->mouse_wheel;
+            if (current_input_->mouse_clicked[0]) {
+                constexpr auto kDoubleClickWindow = std::chrono::milliseconds(350);
+                const auto now = std::chrono::steady_clock::now();
+                mouse.double_clicked =
+                    have_left_click_time_ && (now - last_left_click_at_) <= kDoubleClickWindow;
+                last_left_click_at_ = now;
+                have_left_click_time_ = true;
+            }
+            mouse.dragging = current_input_->mouse_down[0];
+        } else {
+            auto& io = ImGui::GetIO();
+            mouse.pos_x = io.MousePos.x;
+            mouse.pos_y = io.MousePos.y;
+            mouse.delta_x = io.MouseDelta.x;
+            mouse.delta_y = io.MouseDelta.y;
+            mouse.wheel = io.MouseWheel;
+            mouse.double_clicked = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+            mouse.dragging = ImGui::IsMouseDragging(ImGuiMouseButton_Left);
+        }
+        prev_mouse_x_ = mouse.pos_x;
+        prev_mouse_y_ = mouse.pos_y;
+        have_prev_mouse_ = true;
+
+        const lfs::python::SceneContextGuard scene_guard(ctx ? ctx->scene : nullptr);
+        const lfs::python::GilAcquire gil;
+
+        layout_.begin_frame(doc, mouse);
+        try {
+            panel_instance_.attr("draw")(nb::cast(layout_, nb::rv_policy::reference));
+        } catch (const std::exception& e) {
+            LOG_ERROR("Panel draw error: {}", e.what());
+        }
+        layout_.end_frame();
+
+        const auto& ops = lfs::python::get_rml_panel_host_ops();
+        if (ops.mark_content_dirty)
+            ops.mark_content_dirty(host_);
     }
 
     std::chrono::milliseconds RmlPythonPanelAdapter::updateInterval() const {
@@ -242,7 +278,7 @@ namespace lfs::vis::gui {
                     panel_instance_.attr("on_scene_changed")(py_doc);
                     pending_dirty = true;
                 } catch (const std::exception& e) {
-                    LOG_ERROR("RmlPanel on_scene_changed error: {}", e.what());
+                    LOG_ERROR("Panel on_scene_changed error: {}", e.what());
                 }
                 last_scene_gen_ = ctx->scene_generation;
             }
@@ -251,7 +287,7 @@ namespace lfs::vis::gui {
                 nb::object result = panel_instance_.attr("on_update")(py_doc);
                 pending_dirty |= !result.is_none() && nb::cast<bool>(result);
             } catch (const std::exception& e) {
-                LOG_ERROR("RmlPanel on_update error: {}", e.what());
+                LOG_ERROR("Panel on_update error: {}", e.what());
             }
             pending_dirty |= lfs::python::consume_document_dirty(doc);
             next_update_at_ = now + updateInterval();
@@ -261,6 +297,9 @@ namespace lfs::vis::gui {
 
         if (pending_dirty && ops.mark_content_dirty)
             ops.mark_content_dirty(host_);
+
+        drawImmediateLayout(doc, ctx);
+
         if (frame_serial != 0)
             last_prepare_frame_ = frame_serial;
         content_dirty_ = false;
@@ -270,16 +309,20 @@ namespace lfs::vis::gui {
     RmlPythonPanelAdapter::RmlPythonPanelAdapter(void* manager, nb::object panel_instance,
                                                  const std::string& context_name,
                                                  const std::string& rml_path,
-                                                 bool has_poll, int height_mode)
+                                                 const std::string& style, bool has_poll,
+                                                 const int height_mode, const bool has_draw)
         : manager_(manager),
           context_name_(context_name),
           rml_path_(rml_path),
+          style_(style),
           panel_instance_(std::move(panel_instance)),
           has_poll_(has_poll),
+          has_draw_(has_draw),
           height_mode_(height_mode) {
     }
 
     RmlPythonPanelAdapter::~RmlPythonPanelAdapter() {
+        layout_.release_elements();
         if (!host_)
             return;
 
@@ -299,15 +342,6 @@ namespace lfs::vis::gui {
             return;
 
         ops.draw(host_, &ctx);
-
-        if (has_draw_imgui_) {
-            try {
-                lfs::python::PyUILayout layout;
-                panel_instance_.attr("draw_imgui")(layout);
-            } catch (const std::exception& e) {
-                LOG_ERROR("RmlPanel draw_imgui error: {}", e.what());
-            }
-        }
     }
 
     void RmlPythonPanelAdapter::drawDirect(float x, float y, float w, float h,
@@ -337,7 +371,7 @@ namespace lfs::vis::gui {
         try {
             return nb::cast<bool>(panel_instance_.attr("poll")(lfs::python::get_app_context()));
         } catch (const std::exception& e) {
-            LOG_ERROR("RmlPanel poll error: {}", e.what());
+            LOG_ERROR("Panel poll error: {}", e.what());
             return false;
         }
     }
@@ -387,6 +421,11 @@ namespace lfs::vis::gui {
     }
 
     void RmlPythonPanelAdapter::setInput(const PanelInputState* input) {
+        if (input)
+            current_input_ = *input;
+        else
+            current_input_.reset();
+
         if (host_) {
             const auto& ops = lfs::python::get_rml_panel_host_ops();
             if (ops.set_input)

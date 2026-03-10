@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 import lichtfeld as lf
-from .types import RmlPanel
+from .types import Panel
 
 ZOOM_MIN = 0.1
 ZOOM_MAX = 10.0
@@ -41,14 +41,13 @@ _CHANNEL_NAMES = {1: "Gray", 2: "Gray+A", 3: "RGB", 4: "RGBA"}
 _instance = None
 
 
-class ImagePreviewPanel(RmlPanel):
+class ImagePreviewPanel(Panel):
     idname = "lfs.image_preview"
     label = "Image Preview"
     space = "FLOATING"
     order = 98
-    rml_template = "rmlui/image_preview.rml"
-    initial_width = 900
-    initial_height = 600
+    template = "rmlui/image_preview.rml"
+    size = (900, 600)
     update_interval_ms = 16
 
     def __init__(self):
@@ -103,8 +102,8 @@ class ImagePreviewPanel(RmlPanel):
         model.bind_record_list("thumbs")
         self._handle = model.get_handle()
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
         self._doc = doc
 
         for eid, handler in [

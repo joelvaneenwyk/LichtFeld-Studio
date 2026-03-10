@@ -44,75 +44,41 @@ def on_unload():
 MAIN_PANEL_PY = '''"""Main panel for {name} plugin."""
 
 import lichtfeld as lf
-from pathlib import Path
-
-from lfs_plugins.types import RmlPanel
 
 
-class MainPanel(RmlPanel):
-    """Example plugin panel using a plugin-local RmlUI template."""
+class MainPanel(lf.ui.Panel):
+    """Example plugin panel using the unified Panel API."""
 
     idname = "{name}.main_panel"
     label = "{title}"
     space = "MAIN_PANEL_TAB"
     order = 100
-    rml_template = str(Path(__file__).resolve().with_name("main_panel.rml"))
 
     def __init__(self):
         self._click_count = 0
-        self._model_handle = None
+        self._enabled = True
+        self._strength = 0.35
 
-    def on_bind_model(self, ctx):
-        model = ctx.create_data_model("{name}_main_panel")
-        if model is None:
-            return
+    def draw(self, ui):
+        ui.heading("{title}")
+        ui.text_disabled("Simple plugin panel using the unified Panel API")
 
-        model.bind_func("greeting", lambda: "Hello from {name}!")
-        model.bind_func("button_label", lambda: "Click Me")
-        model.bind_func("click_summary", lambda: f"Clicked {{self._click_count}} times")
-        model.bind_event("click_me", self._on_click_me)
-        self._model_handle = model.get_handle()
+        if ui.button(f"Click Me ({{self._click_count}})"):
+            self._click_count += 1
+            lf.log.info("{name}: Button clicked")
+        ui.same_line()
+        if ui.button_styled("Reset", "secondary"):
+            self._click_count = 0
+            self._enabled = True
+            self._strength = 0.35
 
-    def _on_click_me(self, _handle, _ev, _args):
-        self._click_count += 1
-        if self._model_handle:
-            self._model_handle.dirty("click_summary")
-            lf.log.info("{name}: Button clicked!")
-'''
+        _, self._enabled = ui.checkbox("Enabled", self._enabled)
+        _, self._strength = ui.slider_float("Strength", self._strength, 0.0, 1.0)
 
-MAIN_PANEL_RML = '''<rml>
-<head>
-  <link type="text/rcss" href="main_panel.rcss"/>
-</head>
-<body data-model="{name}_main_panel" class="plugin-main-panel">
-  <div class="plugin-main-panel__card">
-    <span class="plugin-main-panel__title">{{greeting}}</span>
-    <span class="plugin-main-panel__summary">{{click_summary}}</span>
-    <button class="btn btn--primary" data-event-click="click_me">{{button_label}}</button>
-  </div>
-</body>
-</rml>
-'''
-
-MAIN_PANEL_RCSS = '''body.plugin-main-panel {
-    padding: 16dp;
-}
-
-.plugin-main-panel__card {
-    display: flex;
-    flex-direction: column;
-    gap: 10dp;
-    max-width: 320dp;
-}
-
-.plugin-main-panel__title {
-    font-size: 15dp;
-    font-weight: bold;
-}
-
-.plugin-main-panel__summary {
-    color: #a0a8b7;
-}
+        ui.separator()
+        ui.text_wrapped(
+            f"enabled={{self._enabled}} | strength={{self._strength:.2f}} | clicks={{self._click_count}}"
+        )
 '''
 
 
@@ -147,8 +113,6 @@ def create_plugin(name: str, target_dir: Optional[Path] = None) -> Path:
     (plugin_dir / "panels" / "main_panel.py").write_text(
         MAIN_PANEL_PY.format(name=name, title=title)
     )
-    (plugin_dir / "panels" / "main_panel.rml").write_text(MAIN_PANEL_RML.format(name=name))
-    (plugin_dir / "panels" / "main_panel.rcss").write_text(MAIN_PANEL_RCSS)
 
     _log.info("Created plugin template at %s", plugin_dir)
     return plugin_dir

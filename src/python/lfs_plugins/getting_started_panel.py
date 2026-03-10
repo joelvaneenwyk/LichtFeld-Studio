@@ -6,7 +6,7 @@ import os
 import threading
 
 import lichtfeld as lf
-from .types import RmlPanel
+from .types import Panel
 
 _CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "lichtfeld-studio", "thumbnails")
 
@@ -33,16 +33,16 @@ def _download_thumbnail(video_id, on_done):
         pass
 
 
-class GettingStartedPanel(RmlPanel):
+class GettingStartedPanel(Panel):
     """Floating panel displaying tutorial videos and documentation."""
 
     idname = "lfs.getting_started"
     label = "Getting Started"
     space = "FLOATING"
     order = 99
-    rml_template = "rmlui/getting_started.rml"
-    rml_height_mode = "content"
-    initial_width = 560
+    template = "rmlui/getting_started.rml"
+    height_mode = "content"
+    size = (560, 0)
     update_interval_ms = 100
 
     WIKI_URL = "https://github.com/MrNeRF/LichtFeld-Studio/wiki"
@@ -74,8 +74,8 @@ class GettingStartedPanel(RmlPanel):
 
         self._handle = model.get_handle()
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
 
         self._ready_lock = threading.Lock()
         self._ready_queue = []

@@ -4,6 +4,7 @@
 
 from importlib import import_module
 from pathlib import Path
+from types import SimpleNamespace
 from types import ModuleType
 import sys
 
@@ -16,7 +17,7 @@ sys.path.insert(0, str(SOURCE_PYTHON))
 from lfs_plugins.templates import create_plugin
 
 
-def test_create_plugin_generates_rml_panel_template(tmp_path):
+def test_create_plugin_generates_unified_panel_template(tmp_path):
     plugin_dir = create_plugin("example_plugin", tmp_path)
 
     panel_py = plugin_dir / "panels" / "main_panel.py"
@@ -24,12 +25,18 @@ def test_create_plugin_generates_rml_panel_template(tmp_path):
     panel_rcss = plugin_dir / "panels" / "main_panel.rcss"
 
     assert panel_py.exists()
-    assert panel_rml.exists()
-    assert panel_rcss.exists()
+    assert not panel_rml.exists()
+    assert not panel_rcss.exists()
 
     sys.path.insert(0, str(tmp_path))
+    original_lf = sys.modules.get("lichtfeld")
     try:
-        sys.modules.setdefault("lichtfeld", ModuleType("lichtfeld"))
+        fake_lf = ModuleType("lichtfeld")
+        fake_lf.ui = SimpleNamespace(Panel=type("Panel", (), {}))
+        fake_lf.log = SimpleNamespace(info=lambda *args, **kwargs: None)
+        fake_lf.register_class = lambda _cls: None
+        fake_lf.unregister_class = lambda _cls: None
+        sys.modules["lichtfeld"] = fake_lf
         sys.modules.pop("example_plugin", None)
         sys.modules.pop("example_plugin.panels", None)
         sys.modules.pop("example_plugin.panels.main_panel", None)
@@ -37,10 +44,12 @@ def test_create_plugin_generates_rml_panel_template(tmp_path):
         module = import_module("example_plugin.panels.main_panel")
         panel_cls = module.MainPanel
 
-        assert panel_cls.__mro__[1].__name__ == "RmlPanel"
-        assert Path(panel_cls.rml_template).is_absolute()
-        assert Path(panel_cls.rml_template) == panel_rml.resolve()
-        assert "data-model=\"example_plugin_main_panel\"" in panel_rml.read_text()
-        assert "plugin-main-panel__card" in panel_rcss.read_text()
+        assert panel_cls.__mro__[1].__name__ == "Panel"
+        assert "def draw(self, ui):" in panel_py.read_text()
+        assert "lf.ui.Panel" in panel_py.read_text()
     finally:
+        if original_lf is None:
+            sys.modules.pop("lichtfeld", None)
+        else:
+            sys.modules["lichtfeld"] = original_lf
         sys.path.remove(str(tmp_path))

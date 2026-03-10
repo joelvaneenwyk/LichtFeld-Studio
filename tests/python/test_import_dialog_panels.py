@@ -219,7 +219,7 @@ def test_dataset_import_panel_binds_enter_and_escape(import_dialog_module):
     panel._handle = _HandleStub()
     document = _DocumentStub()
 
-    panel.on_load(document)
+    panel.on_mount(document)
     assert panel.show("/tmp/dataset") is True
 
     enter_event = _EventStub(module.KI_RETURN)
@@ -248,7 +248,7 @@ def test_resume_checkpoint_panel_binds_enter_and_escape(import_dialog_module):
     panel._handle = _HandleStub()
     document = _DocumentStub()
 
-    panel.on_load(document)
+    panel.on_mount(document)
     assert panel.show(state.checkpoint_path) is True
 
     enter_event = _EventStub(module.KI_RETURN)

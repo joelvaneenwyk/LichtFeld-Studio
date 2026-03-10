@@ -5,10 +5,10 @@
 from pathlib import Path
 
 import lichtfeld as lf
-from .types import RmlPanel
+from .types import Panel
 
 
-class ScriptsPanel(RmlPanel):
+class ScriptsPanel(Panel):
     """Floating window for managing loaded Python scripts."""
 
     idname = "lfs.scripts"
@@ -16,9 +16,9 @@ class ScriptsPanel(RmlPanel):
     space = "FLOATING"
     order = 200
     options = {"DEFAULT_CLOSED"}
-    rml_template = "rmlui/scripts_panel.rml"
-    rml_height_mode = "content"
-    initial_width = 520
+    template = "rmlui/scripts_panel.rml"
+    height_mode = "content"
+    size = (520, 0)
     update_interval_ms = 200
 
     def __init__(self):
@@ -42,8 +42,8 @@ class ScriptsPanel(RmlPanel):
 
         self._handle = model.get_handle()
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
 
         scripts_list = doc.get_element_by_id("scripts-list")
         if scripts_list:

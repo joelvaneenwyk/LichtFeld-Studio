@@ -18,29 +18,67 @@ lf.unregister_class(cls)         # Unregister a Panel, Operator, or Menu class
 ## Panel
 
 ```python
-from lfs_plugins.types import Panel
+import lichtfeld as lf
+# lf.ui.Panel is the base class for all panels
 ```
 
-| Attribute   | Type       | Default           | Description                          |
-|-------------|------------|-------------------|--------------------------------------|
-| `idname`    | `str`      | `module.qualname` | Unique panel identifier              |
-| `label`     | `str`      | `""`              | Display name (`idname` fallback when empty) |
-| `space`     | `str`      | `"FLOATING"`      | Panel space (see below)              |
-| `parent`    | `str`      | `""`              | Parent tab idname — embeds as collapsible section (overrides `space`) |
-| `order`     | `int`      | `100`             | Sort order (lower = higher)          |
-| `options`   | `Set[str]` | `set()`           | `"DEFAULT_CLOSED"`, `"HIDE_HEADER"` |
+| Attribute | Type | Default | Description |
+|---|---|---|---|
+| `idname` | `str` | `module.qualname` | Unique panel identifier |
+| `label` | `str` | `""` | Display name (`idname` fallback when empty) |
+| `space` | `str` | `"MAIN_PANEL_TAB"` | Panel space (see below) |
+| `parent` | `str` | `""` | Parent tab idname. Embeds as collapsible section and overrides `space` |
+| `order` | `int` | `100` | Sort order (lower = higher) |
+| `options` | `Set[str]` | `set()` | `"DEFAULT_CLOSED"`, `"HIDE_HEADER"` |
 | `poll_deps` | `Set[str]` | `{"SCENE","SELECTION","TRAINING"}` | Which state changes trigger `poll()` |
+| `size` | `tuple[float, float] \| None` | `None` | Initial width/height hint, mainly for floating panels |
+| `template` | `str` | `""` | Retained RML template. Use an absolute path for plugin-local files |
+| `style` | `str` | `""` | Inline RCSS appended to the retained document |
+| `height_mode` | `str` | `"fill"` | `"fill"` or `"content"` for retained panels |
+| `update_interval_ms` | `int` | `100` | Cadence for retained/hybrid `on_update()` work |
 
-| Method               | Returns | Description                      |
-|----------------------|---------|----------------------------------|
-| `poll(cls, context)` | `bool`  | Classmethod. Show/hide condition |
-| `draw(self, layout)` | `None`  | Render panel via layout API      |
+| Method | Returns | Description |
+|---|---|---|
+| `poll(cls, context)` | `bool` | Classmethod. Show/hide condition |
+| `draw(self, ui)` | `None` | Immediate-mode content |
+| `on_bind_model(self, ctx)` | `None` | Bind retained data models before document load |
+| `on_mount(self, doc)` | `None` | Called once after the retained document mounts |
+| `on_unmount(self, doc)` | `None` | Called before the retained document is destroyed |
+| `on_update(self, doc)` | `None \| bool` | Periodic retained update. Return `True` to mark content dirty |
+| `on_scene_changed(self, doc)` | `None` | Called when the active scene generation changes |
 
 Registering a panel with the same `idname` as an existing panel replaces it (see [Panel replacement](getting-started.md#panel-replacement)).
+
+`lf.ui.Panel` is unified: a panel can start as `draw(ui)` only and later add `template`, `style`, `height_mode`, or retained hooks without switching base classes or rewriting the panel body.
 
 ### Panel spaces
 
 `MAIN_PANEL_TAB`, `SIDE_PANEL`, `VIEWPORT_OVERLAY`, `SCENE_HEADER`, `FLOATING`, `DOCKABLE`, `STATUS_BAR`
+
+### Retained shell behavior
+
+If a panel uses retained features and `template` is empty, LichtFeld selects a shell automatically:
+
+- `FLOATING` -> `rmlui/floating_window.rml`
+- `STATUS_BAR` -> `rmlui/status_bar_panel.rml`
+- Other retained panel spaces -> `rmlui/docked_panel.rml`
+
+Built-in template aliases:
+
+- `builtin:docked-panel`
+- `builtin:floating-window`
+- `builtin:status-bar`
+
+### Panel styling guide
+
+| Goal | Use | Notes |
+|---|---|---|
+| Minimal panel | `draw(self, ui)` | No extra files needed |
+| Light retained styling | `style` | Inline RCSS text, not a path |
+| Full custom retained UI | `template` | Use an absolute path for plugin-local `.rml` |
+| Hybrid panel | `template` plus `draw(ui)` | Render immediate content into `<div id="im-root"></div>` |
+
+When a plugin-local template file such as `main_panel.rml` is present, LichtFeld automatically loads a sibling `main_panel.rcss` stylesheet if it exists.
 
 ---
 
@@ -608,11 +646,33 @@ class PluginState(Enum):
     DISABLED = "disabled"
 ```
 
+### `lichtfeld.plugins` convenience API
+
+```python
+import lichtfeld as lf
+```
+
+| Function | Returns | Description |
+|---|---|---|
+| `lf.plugins.discover()` | `list[PluginInfo]` | Discover plugins in `~/.lichtfeld/plugins/` |
+| `lf.plugins.load(name)` | `bool` | Load a plugin |
+| `lf.plugins.unload(name)` | `bool` | Unload a plugin |
+| `lf.plugins.reload(name)` | `bool` | Reload a plugin |
+| `lf.plugins.load_all()` | `dict[str, bool]` | Load all user-enabled plugins |
+| `lf.plugins.start_watcher()` | `None` | Start the hot-reload watcher |
+| `lf.plugins.stop_watcher()` | `None` | Stop the hot-reload watcher |
+| `lf.plugins.get_state(name)` | `PluginState \| None` | Read plugin state |
+| `lf.plugins.get_error(name)` | `str \| None` | Read the last plugin error |
+| `lf.plugins.get_traceback(name)` | `str \| None` | Read the full traceback |
+| `lf.plugins.create(name)` | `str` | Create the minimal source scaffold in `~/.lichtfeld/plugins/<name>` |
+
+`lf.plugins.create()` writes only the source package. If you want a scaffold that also adds `.venv`, `.vscode`, and `pyrightconfig.json`, use the CLI command `LichtFeld-Studio plugin create <name>`.
+
 ---
 
 ## Layout API
 
-The `layout` object is passed to `Panel.draw()` and provides all UI widget methods. It wraps ImGui.
+The `ui` object passed to `Panel.draw()` provides the immediate widget API used by both simple and hybrid panels. Depending on the panel space and shell, it may be rendered through the direct viewport path or the immediate-mode RML bridge, but the Python widget surface stays the same.
 
 ### Text
 
@@ -741,14 +801,14 @@ The `layout` object is passed to `Panel.draw()` and provides all UI widget metho
 `image_tensor` is the simplest way to display a GPU tensor — it internally manages a `DynamicTexture` cached by `label`. The tensor must be `[H, W, 3]` or `[H, W, 4]` (RGB/RGBA). CPU tensors and non-float32 dtypes are converted automatically.
 
 ```python
-layout.image_tensor("preview", my_tensor, (256, 256))
+ui.image_tensor("preview", my_tensor, (256, 256))
 ```
 
 For full control (e.g. reusing one texture across multiple draw calls), use `DynamicTexture` directly:
 
 ```python
 tex = lf.ui.DynamicTexture(tensor)   # or DynamicTexture() + tex.update(tensor)
-layout.image_texture(tex, (256, 256))
+ui.image_texture(tex, (256, 256))
 ```
 
 ---
@@ -937,7 +997,7 @@ Create composable sub-layouts with automatic widget positioning and state cascad
 | `grid_flow(columns=0, even_columns=True, even_rows=True)` | `SubLayout` | Responsive grid         |
 | `prop_enum(data, prop_id, value, text='')`          | `bool`      | Enum toggle button              |
 
-`SubLayout` is a context manager. Use `with layout.row() as row:` to enter the layout, then call widget methods on `row` instead of `layout`. Sub-layouts nest arbitrarily.
+`SubLayout` is a context manager. Use `with ui.row() as row:` to enter the layout, then call widget methods on `row` instead of `ui`. Sub-layouts nest arbitrarily.
 
 #### SubLayout state properties
 
@@ -950,23 +1010,23 @@ Create composable sub-layouts with automatic widget positioning and state cascad
 #### Example
 
 ```python
-def draw(self, layout):
-    with layout.row() as row:
+def draw(self, ui):
+    with ui.row() as row:
         row.prop_enum(self, "mode", "fast", "Fast")
         row.prop_enum(self, "mode", "quality", "Quality")
 
-    with layout.box() as box:
+    with ui.box() as box:
         box.heading("Settings")
         box.prop(self, "opacity")
 
-    with layout.column() as col:
+    with ui.column() as col:
         col.enabled = self.is_active
         col.prop(self, "value")
         with col.row() as row:
             row.button("Apply")
             row.button("Cancel")
 
-    with layout.grid_flow(columns=3) as grid:
+    with ui.grid_flow(columns=3) as grid:
         for item in items:
             with grid.box() as cell:
                 cell.label(item.name)

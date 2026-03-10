@@ -8,19 +8,19 @@ from typing import Iterable
 
 import lichtfeld as lf
 
-from .types import RmlPanel
+from .types import Panel
 
 
-class Mesh2SplatPanel(RmlPanel):
+class Mesh2SplatPanel(Panel):
     """Floating retained panel for mesh-to-splat conversion."""
 
     idname = "native.mesh2splat"
     label = "Mesh to Splat"
     space = "FLOATING"
     order = 12
-    rml_template = "rmlui/mesh2splat_panel.rml"
-    rml_height_mode = "content"
-    initial_width = 420
+    template = "rmlui/mesh2splat_panel.rml"
+    height_mode = "content"
+    size = (420, 0)
     update_interval_ms = 100
 
     _RESOLUTION_OPTIONS = (128, 256, 512, 1024, 2048, 4096)
@@ -68,8 +68,8 @@ class Mesh2SplatPanel(RmlPanel):
 
         self._handle = model.get_handle()
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
 
         mesh_list = doc.get_element_by_id("mesh-list")
         if mesh_list:

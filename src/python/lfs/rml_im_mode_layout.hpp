@@ -400,6 +400,8 @@ namespace lfs::python {
 
         bool is_active() const { return doc_ != nullptr; }
 
+        void release_elements();
+
     private:
         Slot& ensure_slot(SlotType type, const std::string& key);
         Rml::Element* create_element(SlotType type, const std::string& key);
@@ -423,7 +425,14 @@ namespace lfs::python {
         int disabled_depth_ = 0;
         std::vector<std::string> id_stack_;
         bool force_next_open_ = false;
+        struct ChildSlotCache {
+            Rml::Element* container = nullptr;
+            std::deque<Slot> slots;
+        };
+
         std::vector<Rml::ElementPtr> removed_elements_;
+        std::unordered_map<std::string, ChildSlotCache> child_slots_;
+        std::vector<std::string> child_key_stack_;
         std::unordered_set<std::string> warned_methods_;
 
         Rml::Element* last_element_ = nullptr;

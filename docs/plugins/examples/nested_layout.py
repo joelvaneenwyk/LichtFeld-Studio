@@ -3,10 +3,9 @@
 """Deep nesting with state cascading and alert."""
 
 import lichtfeld as lf
-from lfs_plugins.types import Panel
 
 
-class NestedLayoutPanel(Panel):
+class NestedLayoutPanel(lf.ui.Panel):
     label = "Nested Layout"
     space = "MAIN_PANEL_TAB"
     order = 302
@@ -16,8 +15,8 @@ class NestedLayoutPanel(Panel):
         self.threshold = 0.8
         self.enabled = True
 
-    def draw(self, layout):
-        with layout.box() as outer:
+    def draw(self, ui):
+        with ui.box() as outer:
             outer.heading("Outer Box")
 
             with outer.column() as col:

@@ -3,17 +3,17 @@
 """Input settings panel for keyboard/mouse binding configuration."""
 
 import lichtfeld as lf
-from .types import RmlPanel
+from .types import Panel
 
 
-class InputSettingsPanel(RmlPanel):
+class InputSettingsPanel(Panel):
     idname = "lfs.input_settings"
     label = "Input Settings"
     space = "FLOATING"
     order = 100
-    rml_template = "rmlui/input_settings.rml"
-    rml_height_mode = "content"
-    initial_width = 500
+    template = "rmlui/input_settings.rml"
+    height_mode = "content"
+    size = (500, 0)
     options = {"DEFAULT_CLOSED"}
     update_interval_ms = 50
 
@@ -179,8 +179,8 @@ class InputSettingsPanel(RmlPanel):
 
     # ── Lifecycle ─────────────────────────────────────────────
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
         self._last_lang = lf.ui.get_current_language()
         self._last_current_profile = lf.keymap.get_current_profile()
 

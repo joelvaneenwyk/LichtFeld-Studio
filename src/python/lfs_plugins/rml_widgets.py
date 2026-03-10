@@ -3,7 +3,7 @@
 """RmlUI widget builder helpers for constructing DOM subtrees
 with correct CSS classes from components.rcss.
 
-Usage in RmlPanel.on_load():
+Usage in Panel.on_mount():
 
     from . import rml_widgets as w
 

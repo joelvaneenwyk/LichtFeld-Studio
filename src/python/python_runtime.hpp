@@ -583,7 +583,8 @@ namespace lfs::python {
     struct PanelDrawContext;
 
     struct RmlPanelHostOps {
-        void* (*create)(void* manager, const char* context_name, const char* rml_path);
+        void* (*create)(void* manager, const char* context_name, const char* rml_path,
+                        const char* inline_rcss);
         void (*destroy)(void* host);
         void (*draw)(void* host, const void* draw_ctx);
         void (*draw_direct)(void* host, float x, float y, float w, float h);

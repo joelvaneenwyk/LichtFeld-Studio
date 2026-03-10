@@ -16,7 +16,7 @@ from .marketplace import (
     PluginMarketplaceCatalog,
 )
 from .plugin import PluginInfo, PluginState
-from .types import RmlPanel
+from .types import Panel
 
 MAX_OUTPUT_LINES = 100
 SUCCESS_DISMISS_SEC = 3.0
@@ -50,16 +50,16 @@ class CardOpState:
     progress: float = 0.0
     output_lines: List[str] = field(default_factory=list)
     finished_at: float = 0.0
-class PluginMarketplacePanel(RmlPanel):
+class PluginMarketplacePanel(Panel):
     """Floating plugin window for browsing, installing, and managing plugins."""
 
     idname = "lfs.plugin_marketplace"
     label = "Plugin Marketplace"
     space = "FLOATING"
     order = 91
-    rml_template = "rmlui/plugin_marketplace.rml"
-    rml_height_mode = "content"
-    initial_width = 770
+    template = "rmlui/plugin_marketplace.rml"
+    height_mode = "content"
+    size = (770, 0)
     update_interval_ms = 100
 
     def __init__(self):
@@ -145,8 +145,8 @@ class PluginMarketplacePanel(RmlPanel):
 
     # ── Lifecycle ─────────────────────────────────────────────
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
         self._doc = doc
         self._last_lang = lf.ui.get_current_language()
         self._entries_dirty = True

@@ -1,6 +1,6 @@
 # LichtFeld Studio Python UI Framework
 
-Create custom UI panels and widgets using Python with the ImGui-backed UI system.
+Create custom UI panels and widgets using Python.
 
 ---
 
@@ -10,9 +10,8 @@ Create custom UI panels and widgets using Python with the ImGui-backed UI system
 
 ```python
 import lichtfeld as lf
-from lfs_plugins.types import Panel
 
-class MyPanel(Panel):
+class MyPanel(lf.ui.Panel):
     idname = "my_plugin.panel"
     label = "My Custom Panel"
     space = "FLOATING"      # MAIN_PANEL_TAB, FLOATING, VIEWPORT_OVERLAY, DOCKABLE, SCENE_HEADER, STATUS_BAR
@@ -57,10 +56,6 @@ lf.register_class(MyPanel)
 ```python
 lf.register_class(MyPanel)
 lf.unregister_class(MyPanel)
-
-# Low-level panel API
-lf.ui.register_panel(MyPanel)
-lf.ui.unregister_panel(MyPanel)
 lf.ui.unregister_all_panels()
 
 lf.ui.set_panel_enabled("my_plugin.panel", False)
@@ -422,9 +417,8 @@ def draw(self, ui):
 
 ```python
 import lichtfeld as lf
-from lfs_plugins.types import Panel
 
-class GaussianFilterPanel(Panel):
+class GaussianFilterPanel(lf.ui.Panel):
     idname = "example.gaussian_filter"
     label = "Gaussian Filter"
     space = "MAIN_PANEL_TAB"

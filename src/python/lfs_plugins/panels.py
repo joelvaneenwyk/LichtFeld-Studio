@@ -12,18 +12,18 @@ def register_builtin_panels():
 
         # Main panel tabs (Rendering must be first)
         from .rendering_panel import RenderingPanel
-        lf.ui.register_rml_panel(RenderingPanel)
+        lf.register_class(RenderingPanel)
 
         from .training_panel import TrainingPanel
-        lf.ui.register_rml_panel(TrainingPanel)
+        lf.register_class(TrainingPanel)
 
         from .scene_panel import ScenePanel
-        lf.ui.register_rml_panel(ScenePanel)
+        lf.register_class(ScenePanel)
 
         from .import_panels import DatasetImportPanel, ResumeCheckpointPanel
-        lf.ui.register_rml_panel(DatasetImportPanel)
+        lf.register_class(DatasetImportPanel)
         lf.ui.set_panel_enabled("lfs.dataset_import", False)
-        lf.ui.register_rml_panel(ResumeCheckpointPanel)
+        lf.register_class(ResumeCheckpointPanel)
         lf.ui.set_panel_enabled("lfs.resume_checkpoint", False)
 
         from . import selection_groups
@@ -49,37 +49,37 @@ def register_builtin_panels():
 
         # Floating panels
         from .export_panel import ExportPanel
-        lf.ui.register_rml_panel(ExportPanel)
+        lf.register_class(ExportPanel)
         lf.ui.set_panel_enabled("lfs.export", False)
 
         from .about_panel import AboutPanel
-        lf.ui.register_rml_panel(AboutPanel)
+        lf.register_class(AboutPanel)
         lf.ui.set_panel_enabled("lfs.about", False)
 
         from .getting_started_panel import GettingStartedPanel
-        lf.ui.register_rml_panel(GettingStartedPanel)
+        lf.register_class(GettingStartedPanel)
         lf.ui.set_panel_enabled("lfs.getting_started", False)
 
         from .image_preview_panel import ImagePreviewPanel
-        lf.ui.register_rml_panel(ImagePreviewPanel)
+        lf.register_class(ImagePreviewPanel)
         lf.ui.set_panel_enabled("lfs.image_preview", False)
 
         from .image_preview_panel import open_camera_preview_by_uid
         lf.ui.on_open_camera_preview(open_camera_preview_by_uid)
 
         from .scripts_panel import ScriptsPanel
-        lf.ui.register_rml_panel(ScriptsPanel)
+        lf.register_class(ScriptsPanel)
         lf.ui.set_panel_enabled("lfs.scripts", False)
 
         from .input_settings_panel import InputSettingsPanel
-        lf.ui.register_rml_panel(InputSettingsPanel)
+        lf.register_class(InputSettingsPanel)
         lf.ui.set_panel_enabled("lfs.input_settings", False)
 
         from .mesh2splat_panel import Mesh2SplatPanel
-        lf.ui.register_rml_panel(Mesh2SplatPanel)
+        lf.register_class(Mesh2SplatPanel)
         lf.ui.set_panel_enabled("native.mesh2splat", False)
 
-        lf.ui.register_rml_panel(PluginMarketplacePanel)
+        lf.register_class(PluginMarketplacePanel)
         lf.ui.set_panel_enabled("lfs.plugin_marketplace", False)
 
         # Viewport overlays

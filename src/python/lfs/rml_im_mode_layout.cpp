@@ -40,6 +40,15 @@ namespace lfs::python {
         assert(state_);
         const auto type = event.GetId();
         if (type == Rml::EventId::Click) {
+            auto* el = event.GetCurrentElement();
+            if (el && el->GetTagName() == "input") {
+                const auto input_type = el->GetAttribute<Rml::String>("type", "");
+                if (input_type == "checkbox") {
+                    state_->changed = true;
+                    state_->bool_value = !state_->bool_value;
+                    return;
+                }
+            }
             state_->clicked = true;
         } else if (type == Rml::EventId::Change) {
             state_->changed = true;
@@ -49,9 +58,7 @@ namespace lfs::python {
             const auto tag = el->GetTagName();
             if (tag == "input") {
                 const auto input_type = el->GetAttribute<Rml::String>("type", "");
-                if (input_type == "checkbox") {
-                    state_->bool_value = el->HasAttribute("checked");
-                } else if (input_type == "range") {
+                if (input_type == "range") {
                     state_->float_value = el->GetAttribute<float>("value", 0.0f);
                 } else if (input_type == "text") {
                     state_->string_value = el->GetAttribute<Rml::String>("value", "");
@@ -82,6 +89,7 @@ namespace lfs::python {
 
         if (containers_.empty() || containers_[0].parent != root_) {
             containers_.clear();
+            child_slots_.clear();
             containers_.push_back({root_, {}, 0});
         } else {
             containers_.resize(1);
@@ -93,6 +101,7 @@ namespace lfs::python {
         disabled_ = false;
         disabled_depth_ = 0;
         id_stack_.clear();
+        child_key_stack_.clear();
         force_next_open_ = false;
         table_.reset();
         item_width_stack_.clear();
@@ -114,7 +123,21 @@ namespace lfs::python {
         for (auto& level : containers_)
             prune_excess_slots(level);
 
+        std::erase_if(child_slots_, [](const auto& pair) {
+            return !pair.second.container || !pair.second.container->GetParentNode();
+        });
+
         containers_.resize(1);
+        current_line_ = nullptr;
+        doc_ = nullptr;
+        root_ = nullptr;
+    }
+
+    void RmlImModeLayout::release_elements() {
+        removed_elements_.clear();
+        child_slots_.clear();
+        child_key_stack_.clear();
+        containers_.clear();
         current_line_ = nullptr;
         doc_ = nullptr;
         root_ = nullptr;
@@ -586,7 +609,7 @@ namespace lfs::python {
             text_span->SetInnerRML(Rml::String(strip_imgui_id(label)));
 
             slot.events.bool_value = value;
-            input->AddEventListener(Rml::EventId::Change, new SlotEventListener(&slot.events));
+            input->AddEventListener(Rml::EventId::Click, new SlotEventListener(&slot.events));
 
             wrapper->AppendChild(std::move(input));
             wrapper->AppendChild(std::move(text_span));
@@ -595,11 +618,14 @@ namespace lfs::python {
             if (slot.element->GetParentNode() != line)
                 line->AppendChild(slot.element->GetParentNode()->RemoveChild(slot.element));
             auto* input = slot.element->GetChild(0);
-            if (input) {
-                if (value && !input->HasAttribute("checked"))
-                    input->SetAttribute("checked", "");
-                else if (!value && input->HasAttribute("checked"))
-                    input->RemoveAttribute("checked");
+            if (!slot.events.changed) {
+                slot.events.bool_value = value;
+                if (input) {
+                    if (value && !input->HasAttribute("checked"))
+                        input->SetAttribute("checked", "");
+                    else if (!value && input->HasAttribute("checked"))
+                        input->RemoveAttribute("checked");
+                }
             }
         }
 
@@ -607,7 +633,9 @@ namespace lfs::python {
         last_clicked_ = false;
         if (slot.events.changed) {
             slot.events.changed = false;
-            return {true, slot.events.bool_value};
+            bool new_value = slot.events.bool_value;
+            slot.events.bool_value = new_value;
+            return {true, new_value};
         }
         return {false, value};
     }
@@ -678,7 +706,8 @@ namespace lfs::python {
             input->SetAttribute("type", "range");
             input->SetAttribute("min", Rml::String(std::to_string(min)));
             input->SetAttribute("max", Rml::String(std::to_string(max)));
-            input->SetAttribute("step", "any");
+            const float step = (max - min) / 1000.0f;
+            input->SetAttribute("step", Rml::String(std::to_string(step)));
             input->SetAttribute("value", Rml::String(std::to_string(value)));
             input->SetClass("setting-slider", true);
 
@@ -1409,8 +1438,7 @@ namespace lfs::python {
 
         if (!slot.element) {
             auto wrapper = doc_->CreateElement("div");
-            wrapper->SetProperty("position", "relative");
-            wrapper->SetProperty("width", "100%");
+            wrapper->SetClass("im-progress", true);
 
             auto prog = doc_->CreateElement("progress");
             prog->SetAttribute("value", Rml::String(std::to_string(fraction)));
@@ -1605,7 +1633,8 @@ namespace lfs::python {
         finish_current_line();
         assert(!containers_.empty());
 
-        auto& slot = ensure_slot(SlotType::Line, build_id("child:" + id));
+        auto key = build_id("child:" + id);
+        auto& slot = ensure_slot(SlotType::Line, key);
 
         if (!slot.element) {
             auto el = doc_->CreateElement("div");
@@ -1620,10 +1649,14 @@ namespace lfs::python {
             slot.element = containers_.back().parent->AppendChild(std::move(el));
         }
 
-        while (slot.element->HasChildNodes())
-            removed_elements_.push_back(slot.element->RemoveChild(slot.element->GetFirstChild()));
-
-        containers_.push_back({slot.element, {}, 0});
+        auto it = child_slots_.find(key);
+        if (it != child_slots_.end()) {
+            containers_.push_back({slot.element, std::move(it->second.slots), 0});
+            child_slots_.erase(it);
+        } else {
+            containers_.push_back({slot.element, {}, 0});
+        }
+        child_key_stack_.push_back(std::move(key));
         return true;
     }
 
@@ -1632,6 +1665,12 @@ namespace lfs::python {
             return;
         finish_current_line();
         prune_excess_slots(containers_.back());
+
+        if (!child_key_stack_.empty()) {
+            auto* container = containers_.back().parent;
+            child_slots_[child_key_stack_.back()] = {container, std::move(containers_.back().slots)};
+            child_key_stack_.pop_back();
+        }
         containers_.pop_back();
     }
 

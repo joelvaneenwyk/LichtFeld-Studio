@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 LichtFeld Studio Authors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Regression tests for the plugin API surface during the Rml transition."""
+"""Regression tests for the final plugin API surface."""
 
 from importlib import import_module
 from pathlib import Path
@@ -17,13 +17,13 @@ def _source_python_path(monkeypatch):
     monkeypatch.syspath_prepend(str(PROJECT_ROOT / "src" / "python"))
 
 
-def test_plugin_package_exports_rml_first_types(monkeypatch):
+def test_plugin_package_exports_unified_panel_types(monkeypatch):
     monkeypatch.delitem(sys.modules, "lfs_plugins", raising=False)
 
     module = import_module("lfs_plugins")
 
     assert module.Panel.__name__ == "Panel"
-    assert module.RmlPanel.__name__ == "RmlPanel"
+    assert not hasattr(module, "RmlPanel")
     assert module.Menu.__name__ == "Menu"
 
 

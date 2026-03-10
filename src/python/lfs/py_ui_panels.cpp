@@ -9,11 +9,14 @@
 #include "python_panel_adapter.hpp"
 #include "rml_im_mode_panel_adapter.hpp"
 #include "rml_python_panel_adapter.hpp"
+#include "visualizer/gui/rmlui/rml_theme.hpp"
 #include "visualizer/gui/panel_registry.hpp"
 
 #include <algorithm>
+#include <array>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 
 namespace lfs::python {
 
@@ -44,13 +47,111 @@ namespace lfs::python {
             return std::nullopt;
         }
 
-        void warnLegacyPanelRegistrationOnce() {
-            static std::once_flag once;
-            std::call_once(once, [] {
-                LOG_WARN("Rml transition: 'Panel' / 'register_panel' is a legacy immediate-mode "
-                         "compatibility path. Keep existing plugins working, but prefer "
-                         "'RmlPanel' and 'register_rml_panel' for new or touched UI.");
-            });
+        nb::object panel_base_type() {
+            static nb::object panel_type = nb::module_::import_("lfs_ui_panel").attr("Panel");
+            return panel_type;
+        }
+
+        bool class_overrides(nb::object cls, nb::object base, const char* attr_name) {
+            return nb::hasattr(cls, attr_name) &&
+                   nb::hasattr(base, attr_name) &&
+                   !cls.attr(attr_name).is(base.attr(attr_name));
+        }
+
+        std::string default_template_for_space(const PanelSpace space) {
+            if (space == PanelSpace::Floating)
+                return "rmlui/floating_window.rml";
+            if (space == PanelSpace::StatusBar)
+                return "rmlui/status_bar_panel.rml";
+            return "rmlui/docked_panel.rml";
+        }
+
+        std::string default_immediate_document_for_space(const PanelSpace space) {
+            if (space == PanelSpace::StatusBar)
+                return "rmlui/im_mode_status_bar_panel.rml";
+            return "rmlui/im_mode_panel.rml";
+        }
+
+        std::string resolve_template_identifier(const std::string& template_name,
+                                                const PanelSpace space) {
+            if (template_name.empty())
+                return default_template_for_space(space);
+            if (template_name == "builtin:docked-panel")
+                return "rmlui/docked_panel.rml";
+            if (template_name == "builtin:floating-window")
+                return "rmlui/floating_window.rml";
+            if (template_name == "builtin:status-bar")
+                return "rmlui/status_bar_panel.rml";
+            return template_name;
+        }
+
+        const std::string& retained_immediate_mode_style() {
+            static std::string cached = []() {
+                try {
+                    return gui::rml_theme::loadBaseRCSS("rmlui/im_mode_panel.rcss");
+                } catch (const std::exception& e) {
+                    LOG_ERROR("Failed to load retained immediate-mode RCSS: {}", e.what());
+                    return std::string{};
+                }
+            }();
+            return cached;
+        }
+
+        std::string compose_retained_style(const std::string& style,
+                                           const bool has_immediate_draw) {
+            if (!has_immediate_draw)
+                return style;
+
+            const auto& im_mode_style = retained_immediate_mode_style();
+            if (im_mode_style.empty())
+                return style;
+            if (style.empty())
+                return im_mode_style;
+            return im_mode_style + "\n" + style;
+        }
+
+        int parse_height_mode(nb::object panel_class) {
+            if (!nb::hasattr(panel_class, "height_mode"))
+                return 0;
+
+            const auto mode = nb::cast<std::string>(panel_class.attr("height_mode"));
+            return mode == "content" ? 1 : 0;
+        }
+
+        std::pair<float, float> parse_panel_size(nb::object panel_class) {
+            if (!nb::hasattr(panel_class, "size"))
+                return {0.0f, 0.0f};
+
+            nb::object size_obj = panel_class.attr("size");
+            if (!size_obj.is_valid() || size_obj.is_none())
+                return {0.0f, 0.0f};
+
+            if (!nb::isinstance<nb::tuple>(size_obj))
+                throw std::runtime_error("size must be a tuple[float, float] or None");
+
+            const nb::tuple size_tuple = nb::cast<nb::tuple>(size_obj);
+            if (size_tuple.size() != 2)
+                throw std::runtime_error("size must contain exactly two values");
+
+            return {nb::cast<float>(size_tuple[0]), nb::cast<float>(size_tuple[1])};
+        }
+
+        bool uses_retained_panel(nb::object panel_class, nb::object panel_base,
+                                 const PanelSpace space, const std::string& template_name,
+                                 const std::string& style, const int height_mode) {
+            if (space == PanelSpace::ViewportOverlay || !lfs::python::get_rml_manager())
+                return false;
+
+            if (!template_name.empty() || !style.empty() || height_mode != 0)
+                return true;
+
+            for (const auto* hook :
+                 std::array{"on_bind_model", "on_mount", "on_unmount", "on_update", "on_scene_changed"}) {
+                if (class_overrides(panel_class, panel_base, hook))
+                    return true;
+            }
+
+            return false;
         }
     } // namespace
 
@@ -61,7 +162,6 @@ namespace lfs::python {
 
     void PyPanelRegistry::register_panel(nb::object panel_class) {
         std::lock_guard lock(mutex_);
-        warnLegacyPanelRegistrationOnce();
 
         if (!panel_class.is_valid()) {
             LOG_ERROR("register_panel: invalid panel_class");
@@ -74,6 +174,12 @@ namespace lfs::python {
         int order = 100;
         uint32_t options = 0;
         PollDependency poll_deps = PollDependency::ALL;
+        std::string parent_idname;
+        std::string template_name;
+        std::string style;
+        int height_mode = 0;
+        float initial_width = 0.0f;
+        float initial_height = 0.0f;
 
         try {
             if (nb::hasattr(panel_class, "idname")) {
@@ -95,6 +201,19 @@ namespace lfs::python {
             if (nb::hasattr(panel_class, "order")) {
                 order = nb::cast<int>(panel_class.attr("order"));
             }
+            if (nb::hasattr(panel_class, "parent")) {
+                parent_idname = nb::cast<std::string>(panel_class.attr("parent"));
+            }
+            if (nb::hasattr(panel_class, "template")) {
+                template_name = nb::cast<std::string>(panel_class.attr("template"));
+            }
+            if (nb::hasattr(panel_class, "style")) {
+                style = nb::cast<std::string>(panel_class.attr("style"));
+            }
+            height_mode = parse_height_mode(panel_class);
+            auto [parsed_width, parsed_height] = parse_panel_size(panel_class);
+            initial_width = parsed_width;
+            initial_height = parsed_height;
             nb::object opts;
             if (nb::hasattr(panel_class, "options")) {
                 opts = panel_class.attr("options");
@@ -149,23 +268,34 @@ namespace lfs::python {
         }
 
         const bool has_poll = nb::hasattr(panel_class, "poll");
+        const nb::object panel_base = panel_base_type();
+        const bool has_immediate_draw = class_overrides(panel_class, panel_base, "draw");
+        const bool use_retained = uses_retained_panel(
+            panel_class, panel_base, space, template_name, style, height_mode);
         const bool use_rml = (space != PanelSpace::ViewportOverlay) && lfs::python::get_rml_manager();
 
         std::shared_ptr<gui::IPanel> adapter;
-        if (use_rml) {
+        if (use_retained) {
+            auto retained_adapter = std::make_shared<gui::RmlPythonPanelAdapter>(
+                lfs::python::get_rml_manager(),
+                instance,
+                idname,
+                resolve_template_identifier(template_name, space),
+                compose_retained_style(style, has_immediate_draw),
+                has_poll,
+                height_mode,
+                has_immediate_draw);
+            if (to_gui_space(space) == gui::PanelSpace::Floating)
+                retained_adapter->setForeground(true);
+            adapter = retained_adapter;
+        } else if (use_rml) {
             adapter = std::make_shared<gui::RmlImModePanelAdapter>(
-                lfs::python::get_rml_manager(), instance, has_poll);
+                lfs::python::get_rml_manager(),
+                instance,
+                has_poll,
+                default_immediate_document_for_space(space));
         } else {
             adapter = std::make_shared<PythonPanelAdapter>(instance, has_poll);
-        }
-
-        std::string parent_idname;
-        try {
-            if (nb::hasattr(panel_class, "parent")) {
-                parent_idname = nb::cast<std::string>(panel_class.attr("parent"));
-            }
-        } catch (const std::exception& e) {
-            LOG_ERROR("register_panel: failed to extract parent for '{}': {}", label, e.what());
         }
 
         gui::PanelInfo info;
@@ -178,6 +308,8 @@ namespace lfs::python {
         info.options = options;
         info.poll_deps = static_cast<gui::PollDependency>(poll_deps);
         info.is_native = false;
+        info.initial_width = initial_width;
+        info.initial_height = initial_height;
 
         const bool default_closed =
             (options & static_cast<uint32_t>(gui::PanelOption::DEFAULT_CLOSED)) &&
@@ -250,96 +382,6 @@ namespace lfs::python {
         }
     }
 
-    void PyPanelRegistry::register_rml_panel(nb::object panel_class, void* rml_manager) {
-        std::lock_guard lock(mutex_);
-
-        if (!panel_class.is_valid()) {
-            LOG_ERROR("register_rml_panel: invalid panel_class");
-            return;
-        }
-
-        std::string label = "RmlUI Panel";
-        std::string idname;
-        PanelSpace space = PanelSpace::SceneHeader;
-        int order = 0;
-        std::string rml_template;
-        int height_mode = 0;
-        float initial_width = 0;
-        float initial_height = 0;
-        bool has_poll = false;
-
-        try {
-            idname = nb::hasattr(panel_class, "idname")
-                         ? nb::cast<std::string>(panel_class.attr("idname"))
-                         : get_class_id(panel_class);
-            if (nb::hasattr(panel_class, "label"))
-                label = nb::cast<std::string>(panel_class.attr("label"));
-            if (nb::hasattr(panel_class, "space")) {
-                std::string space_str = nb::cast<std::string>(panel_class.attr("space"));
-                if (auto ps = parse_panel_space(space_str))
-                    space = *ps;
-            }
-            if (nb::hasattr(panel_class, "order"))
-                order = nb::cast<int>(panel_class.attr("order"));
-            if (nb::hasattr(panel_class, "rml_template"))
-                rml_template = nb::cast<std::string>(panel_class.attr("rml_template"));
-            if (nb::hasattr(panel_class, "rml_height_mode")) {
-                std::string mode_str = nb::cast<std::string>(panel_class.attr("rml_height_mode"));
-                if (mode_str == "content")
-                    height_mode = 1;
-            }
-            if (nb::hasattr(panel_class, "initial_width"))
-                initial_width = nb::cast<float>(panel_class.attr("initial_width"));
-            if (nb::hasattr(panel_class, "initial_height"))
-                initial_height = nb::cast<float>(panel_class.attr("initial_height"));
-            has_poll = nb::hasattr(panel_class, "poll");
-        } catch (const std::exception& e) {
-            LOG_ERROR("register_rml_panel: failed to extract attributes: {}", e.what());
-            return;
-        }
-
-        if (rml_template.empty()) {
-            LOG_ERROR("register_rml_panel: rml_template not set for '{}'", label);
-            return;
-        }
-
-        nb::object instance;
-        try {
-            instance = panel_class();
-        } catch (const std::exception& e) {
-            LOG_ERROR("register_rml_panel: failed to create instance for '{}': {}", label, e.what());
-            return;
-        }
-
-        auto adapter = std::make_shared<gui::RmlPythonPanelAdapter>(
-            rml_manager, std::move(instance), idname, rml_template, has_poll, height_mode);
-
-        const auto gui_space = to_gui_space(space);
-        if (gui_space == gui::PanelSpace::Floating)
-            adapter->setForeground(true);
-
-        gui::PanelInfo info;
-        info.panel = adapter;
-        info.label = label;
-        info.idname = idname;
-        info.space = gui_space;
-        info.order = order;
-        info.is_native = false;
-        info.initial_width = initial_width;
-        info.initial_height = initial_height;
-
-        std::string module_prefix;
-        try {
-            module_prefix = nb::cast<std::string>(panel_class.attr("__module__"));
-        } catch (...) {
-        }
-
-        gui::PanelRegistry::instance().register_panel(std::move(info));
-        panels_[idname] = {adapter, module_prefix};
-
-        LOG_INFO("RmlUI panel '{}' registered", label);
-    }
-
     void register_ui_panels(nb::module_& m) {
         nb::enum_<PanelSpace>(m, "PanelSpace")
             .value("SIDE_PANEL", PanelSpace::SidePanel)
@@ -349,31 +391,7 @@ namespace lfs::python {
             .value("MAIN_PANEL_TAB", PanelSpace::MainPanelTab)
             .value("SCENE_HEADER", PanelSpace::SceneHeader)
             .value("STATUS_BAR", PanelSpace::StatusBar);
-
-        m.def(
-            "register_panel",
-            [](nb::object cls) { PyPanelRegistry::instance().register_panel(cls); },
-            nb::arg("cls"),
-            "Register a legacy immediate-mode panel class for rendering in the UI");
-
-        m.def(
-            "register_rml_panel",
-            [](nb::object cls) {
-                auto* mgr = lfs::python::get_rml_manager();
-                if (!mgr) {
-                    LOG_ERROR("register_rml_panel: RmlUI manager not available");
-                    return;
-                }
-                PyPanelRegistry::instance().register_rml_panel(cls, mgr);
-            },
-            nb::arg("cls"),
-            "Register an RmlUI panel class");
-
-        m.def(
-            "unregister_panel",
-            [](nb::object cls) { PyPanelRegistry::instance().unregister_panel(cls); },
-            nb::arg("cls"),
-            "Unregister a panel class");
+        m.attr("Panel") = panel_base_type();
 
         m.def(
             "unregister_all_panels", []() {

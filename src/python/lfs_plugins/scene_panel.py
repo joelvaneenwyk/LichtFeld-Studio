@@ -6,7 +6,7 @@ import math
 
 import lichtfeld as lf
 
-from .types import RmlPanel
+from .types import Panel
 from .ui.state import AppState
 
 TREE_ROW_HEIGHT_DP = 20
@@ -109,12 +109,12 @@ def _can_drag(node_type, parent_is_dataset):
     return node_type in DRAGGABLE_TYPES and not parent_is_dataset
 
 
-class ScenePanel(RmlPanel):
+class ScenePanel(Panel):
     idname = "lfs.scene"
     label = "Scene"
     space = "SCENE_HEADER"
     order = 0
-    rml_template = "rmlui/scene_tree.rml"
+    template = "rmlui/scene_tree.rml"
     update_interval_ms = 16
 
     def __init__(self):
@@ -182,7 +182,7 @@ class ScenePanel(RmlPanel):
         model.bind_record_list("context_menu_entries")
         self._handle = model.get_handle()
 
-    def on_load(self, doc):
+    def on_mount(self, doc):
         self.doc = doc
         self._last_lang = lf.ui.get_current_language()
         self.container = doc.get_element_by_id("tree-container")

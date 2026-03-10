@@ -206,15 +206,6 @@ class PanelSpace(enum.Enum):
 
     STATUS_BAR = 6
 
-def register_panel(cls: object) -> None:
-    """Register a legacy immediate-mode panel class for rendering in the UI"""
-
-def register_rml_panel(cls: object) -> None:
-    """Register an RmlUI panel class"""
-
-def unregister_panel(cls: object) -> None:
-    """Unregister a panel class"""
-
 def unregister_all_panels() -> None:
     """Unregister all Python panels"""
 

@@ -187,10 +187,11 @@ namespace lfs::vis::gui {
     } // namespace
 
     RmlPanelHost::RmlPanelHost(RmlUIManager* manager, std::string context_name,
-                               std::string rml_path)
+                               std::string rml_path, std::string inline_rcss)
         : manager_(manager),
           context_name_(std::move(context_name)),
-          rml_path_(std::move(rml_path)) {
+          rml_path_(std::move(rml_path)),
+          inline_rcss_(std::move(inline_rcss)) {
         assert(manager_);
     }
 
@@ -253,9 +254,24 @@ namespace lfs::vis::gui {
         last_theme_signature_ = theme_signature;
         has_theme_signature_ = true;
 
-        if (base_rcss_.empty()) {
+        if (!base_rcss_loaded_) {
             auto rcss_name = std::filesystem::path(rml_path_).replace_extension(".rcss").string();
-            base_rcss_ = rml_theme::loadBaseRCSS(rcss_name);
+            try {
+                const auto requested_path = std::filesystem::path(rcss_name);
+                const auto resolved_path = requested_path.is_absolute()
+                                               ? requested_path
+                                               : lfs::vis::getAssetPath(rcss_name);
+                if (std::filesystem::exists(resolved_path))
+                    base_rcss_ = rml_theme::loadBaseRCSS(resolved_path.string());
+            } catch (const std::exception& e) {
+                LOG_INFO("RCSS load failed for '{}': {}", rcss_name, e.what());
+            }
+            if (!inline_rcss_.empty()) {
+                if (!base_rcss_.empty())
+                    base_rcss_ += "\n";
+                base_rcss_ += inline_rcss_;
+            }
+            base_rcss_loaded_ = true;
         }
 
         rml_theme::applyTheme(document_, base_rcss_, rml_theme::generateAllThemeMedia([this](const auto& th) { return generateThemeRCSS(th); }));
@@ -384,7 +400,10 @@ namespace lfs::vis::gui {
             return measured;
         }
 
-        return content_wrap_el_ ? content_wrap_el_->GetOffsetHeight() : 100.0f;
+        if (content_wrap_el_)
+            return content_wrap_el_->GetOffsetHeight();
+
+        return document_->GetOffsetHeight();
     }
 
     float RmlPanelHost::clampScrollTop(const float scroll_top) const {

@@ -6,7 +6,7 @@ import math
 
 import lichtfeld as lf
 
-from .types import RmlPanel
+from .types import Panel
 
 SENSOR_HALF_HEIGHT_MM = 12.0
 
@@ -117,13 +117,13 @@ def _hex_to_color(h):
         return None
 
 
-class RenderingPanel(RmlPanel):
+class RenderingPanel(Panel):
     idname = "lfs.rendering"
     label = "Rendering"
     space = "MAIN_PANEL_TAB"
     order = 10
-    rml_template = "rmlui/rendering.rml"
-    rml_height_mode = "content"
+    template = "rmlui/rendering.rml"
+    height_mode = "content"
     update_interval_ms = 100
 
     def __init__(self):
@@ -135,7 +135,7 @@ class RenderingPanel(RmlPanel):
         self._picker_click_handled = False
         self._last_swatch_colors = {}
 
-    def on_load(self, doc):
+    def on_mount(self, doc):
         self._doc = doc
         self._popup_el = doc.get_element_by_id("color-picker-popup")
         if self._popup_el:
@@ -250,7 +250,7 @@ class RenderingPanel(RmlPanel):
         if self._handle:
             self._handle.dirty_all()
 
-    def on_unload(self, doc):
+    def on_unmount(self, doc):
         doc.remove_data_model("rendering")
         self._handle = None
         self._popup_el = None
