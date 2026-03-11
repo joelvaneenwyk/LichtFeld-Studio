@@ -70,13 +70,9 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
         gui/panels/tools_panel.cpp
         gui/panels/python_console_panel.cpp
         gui/panels/python_scripts_panel.cpp
-        gui/editor/python_language_def.cpp
-        gui/editor/editor_theme.cpp
-        gui/editor/autocomplete/static_providers.cpp
-        gui/editor/autocomplete/autocomplete_manager.cpp
-        gui/editor/autocomplete/python_introspector.cpp
+        gui/editor/python_lsp_client.cpp
         gui/editor/python_editor.cpp
-        gui/editor/console_output.cpp
+        gui/editor/stdio_process.cpp
 
         # Terminal emulator
         gui/terminal/pty_process.cpp
@@ -193,7 +189,7 @@ target_link_libraries(lfs_visualizer
         imgui::imgui
         implot::implot
         imguizmo::imguizmo
-        imgui_textedit
+        Zep::Zep
         glm::glm
         TBB::tbb
         spdlog::spdlog

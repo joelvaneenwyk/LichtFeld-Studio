@@ -202,6 +202,7 @@ set(TEST_FILES
     test_checkpoint_resume.cpp
     test_video_color_convert.cpp
     test_python_integration.cpp
+    test_python_lsp_client.cpp
     test_uv_runner.cpp
     test_uv_runner_proof.cpp
     test_pytorch_install_proof.cpp
