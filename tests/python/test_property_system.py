@@ -172,7 +172,7 @@ class TestPanelPrefix:
 
         class TestPanel(lf.ui.Panel):
             label = "Test Panel"
-            space = "SIDE_PANEL"
+            space = lf.ui.PanelSpace.SIDE_PANEL
             order = 50
 
             def draw(self, layout):
@@ -190,7 +190,7 @@ class TestPanelRegistry:
 
         class SimplePanel(lf.ui.Panel):
             label = "Simple"
-            space = "FLOATING"
+            space = lf.ui.PanelSpace.MAIN_PANEL_TAB
 
             def draw(self, layout):
                 pass
@@ -203,7 +203,7 @@ class TestPanelRegistry:
 
         class UpdatePanel(lf.ui.Panel):
             label = "Updatable"
-            space = "SIDE_PANEL"
+            space = lf.ui.PanelSpace.SIDE_PANEL
 
             def draw(self, layout):
                 layout.label("Version 1")
@@ -213,7 +213,7 @@ class TestPanelRegistry:
         # Re-register with updated draw
         class UpdatePanel(lf.ui.Panel):
             label = "Updatable"
-            space = "SIDE_PANEL"
+            space = lf.ui.PanelSpace.SIDE_PANEL
 
             def draw(self, layout):
                 layout.label("Version 2")
@@ -226,13 +226,99 @@ class TestPanelRegistry:
 
         class NeverRegistered(lf.ui.Panel):
             label = "Never"
-            space = "FLOATING"
+            space = lf.ui.PanelSpace.MAIN_PANEL_TAB
 
             def draw(self, layout):
                 pass
 
         # Should not raise
         lf.unregister_class(NeverRegistered)
+
+    def test_typed_panel_attributes_register(self, lf):
+        class TypedPanel(lf.ui.Panel):
+            id = "tests.typed_panel"
+            label = "Typed"
+            space = lf.ui.PanelSpace.MAIN_PANEL_TAB
+            options = {lf.ui.PanelOption.HIDE_HEADER}
+            poll_dependencies = {
+                lf.ui.PollDependency.SCENE,
+                lf.ui.PollDependency.SELECTION,
+            }
+
+            def draw(self, layout):
+                del layout
+
+        lf.register_class(TypedPanel)
+        try:
+            info = lf.ui.get_panel("tests.typed_panel")
+            assert info is not None
+            assert info.id == "tests.typed_panel"
+            assert info.label == "Typed"
+            assert info.space == lf.ui.PanelSpace.MAIN_PANEL_TAB
+            assert info.options == {lf.ui.PanelOption.HIDE_HEADER}
+            assert info.poll_dependencies == {
+                lf.ui.PollDependency.SCENE,
+                lf.ui.PollDependency.SELECTION,
+            }
+            tabs = lf.ui.get_main_panel_tabs()
+            assert any(tab.id == "tests.typed_panel" for tab in tabs)
+        finally:
+            lf.unregister_class(TypedPanel)
+
+    def test_invalid_panel_space_raises(self, lf):
+        class InvalidSpacePanel(lf.ui.Panel):
+            label = "Bad"
+            space = "FLOATING"
+
+            def draw(self, layout):
+                del layout
+
+        with pytest.raises(TypeError, match="space"):
+            lf.register_class(InvalidSpacePanel)
+
+    def test_string_height_mode_is_rejected(self, lf):
+        class InvalidHeightModePanel(lf.ui.Panel):
+            label = "Bad Height"
+            height_mode = "content"
+
+            def draw(self, layout):
+                del layout
+
+        with pytest.raises(TypeError, match="height_mode"):
+            lf.register_class(InvalidHeightModePanel)
+
+    def test_parent_space_conflict_raises(self, lf):
+        class EmbeddedPanel(lf.ui.Panel):
+            label = "Embedded"
+            parent = "lfs.rendering"
+            space = lf.ui.PanelSpace.FLOATING
+
+            def draw(self, layout):
+                del layout
+
+        with pytest.raises(ValueError, match="parent"):
+            lf.register_class(EmbeddedPanel)
+
+    def test_removed_legacy_panel_fields_raise(self, lf):
+        class LegacyIdPanel(lf.ui.Panel):
+            idname = "tests.legacy"
+            label = "Legacy"
+
+            def draw(self, layout):
+                del layout
+
+        with pytest.raises(AttributeError, match="idname"):
+            lf.register_class(LegacyIdPanel)
+
+        class LegacyDepsPanel(lf.ui.Panel):
+            label = "Legacy Deps"
+            poll_deps = {lf.ui.PollDependency.SCENE}
+
+            def draw(self, layout):
+                del layout
+
+        with pytest.raises(AttributeError, match="poll_deps"):
+            lf.register_class(LegacyDepsPanel)
 
 
 class TestPropertyCallbacks:
@@ -310,7 +396,7 @@ class TestUILayout:
         """Register/unregister panel verifies layout binding works."""
         class LayoutTestPanel(lf.ui.Panel):
             label = "Layout Test"
-            space = "FLOATING"
+            space = lf.ui.PanelSpace.MAIN_PANEL_TAB
 
             def draw(self, layout):
                 # These would work if we had ImGui context:

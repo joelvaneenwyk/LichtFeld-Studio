@@ -15,12 +15,12 @@ from .types import Panel
 class Mesh2SplatPanel(Panel):
     """Floating retained panel for mesh-to-splat conversion."""
 
-    idname = "native.mesh2splat"
+    id = "native.mesh2splat"
     label = "Mesh to Splat"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 12
     template = "rmlui/mesh2splat_panel.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     size = (420, 0)
     update_interval_ms = 100
 

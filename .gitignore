@@ -13,6 +13,7 @@ imgui.ini
 data
 *.pt
 *.py
+!src/python/_lfs_panel_contract.py
 !src/python/lfs_plugins/**/*.py
 !tests/python/**/*.py
 !docs/plugins/examples/**/*.py

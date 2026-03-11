@@ -31,12 +31,12 @@ def _xml_unescape(text):
 
 
 class ExportPanel(Panel):
-    idname = "lfs.export"
+    id = "lfs.export"
     label = "Export"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 10
     template = "rmlui/export_panel.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     size = (320, 0)
     update_interval_ms = 100
 

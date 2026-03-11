@@ -53,12 +53,12 @@ class CardOpState:
 class PluginMarketplacePanel(Panel):
     """Floating plugin window for browsing, installing, and managing plugins."""
 
-    idname = "lfs.plugin_marketplace"
+    id = "lfs.plugin_marketplace"
     label = "Plugin Marketplace"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 91
     template = "rmlui/plugin_marketplace.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     size = (770, 0)
     update_interval_ms = 100
 

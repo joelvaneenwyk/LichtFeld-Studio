@@ -10,12 +10,12 @@ SELECTION_GROUPS_MODEL = "selection_groups"
 
 
 class SelectionGroupsPanel(Panel):
-    idname = "lfs.selection_groups"
+    id = "lfs.selection_groups"
     label = "Selection Groups"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 110
     template = "rmlui/selection_groups.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     update_interval_ms = 50
 
     def __init__(self):

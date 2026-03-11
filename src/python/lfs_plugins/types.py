@@ -1,12 +1,20 @@
 # SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Base types for LichtFeld plugins."""
-
 from typing import Set
 
-from lfs_ui_panel import Panel
-
 from .props import PropertyGroup
+
+try:
+    import lichtfeld as _lf
+except ModuleNotFoundError:
+    _lf = None
+
+
+if _lf is not None and hasattr(_lf, "ui") and hasattr(_lf.ui, "Panel"):
+    Panel = _lf.ui.Panel
+else:
+    from _lfs_panel_contract import FallbackPanel as Panel
 
 
 class Event:

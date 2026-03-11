@@ -32,7 +32,10 @@ def test_create_plugin_generates_unified_panel_template(tmp_path):
     original_lf = sys.modules.get("lichtfeld")
     try:
         fake_lf = ModuleType("lichtfeld")
-        fake_lf.ui = SimpleNamespace(Panel=type("Panel", (), {}))
+        fake_lf.ui = SimpleNamespace(
+            Panel=type("Panel", (), {}),
+            PanelSpace=SimpleNamespace(MAIN_PANEL_TAB="MAIN_PANEL_TAB"),
+        )
         fake_lf.log = SimpleNamespace(info=lambda *args, **kwargs: None)
         fake_lf.register_class = lambda _cls: None
         fake_lf.unregister_class = lambda _cls: None
@@ -47,6 +50,8 @@ def test_create_plugin_generates_unified_panel_template(tmp_path):
         assert panel_cls.__mro__[1].__name__ == "Panel"
         assert "def draw(self, ui):" in panel_py.read_text()
         assert "lf.ui.Panel" in panel_py.read_text()
+        assert 'id = "example_plugin.main_panel"' in panel_py.read_text()
+        assert "lf.ui.PanelSpace.MAIN_PANEL_TAB" in panel_py.read_text()
     finally:
         if original_lf is None:
             sys.modules.pop("lichtfeld", None)

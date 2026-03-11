@@ -11,6 +11,16 @@ import pytest
 
 
 def _install_lf_stub(monkeypatch):
+    panel_space = SimpleNamespace(
+        SIDE_PANEL="SIDE_PANEL",
+        FLOATING="FLOATING",
+        VIEWPORT_OVERLAY="VIEWPORT_OVERLAY",
+        MAIN_PANEL_TAB="MAIN_PANEL_TAB",
+        SCENE_HEADER="SCENE_HEADER",
+        STATUS_BAR="STATUS_BAR",
+    )
+    panel_height_mode = SimpleNamespace(FILL="fill", CONTENT="content")
+    panel_option = SimpleNamespace(DEFAULT_CLOSED="DEFAULT_CLOSED", HIDE_HEADER="HIDE_HEADER")
     state = SimpleNamespace(
         language=["en"],
         scripts=[],
@@ -52,6 +62,9 @@ def _install_lf_stub(monkeypatch):
 
     lf_stub = ModuleType("lichtfeld")
     lf_stub.ui = SimpleNamespace(
+        PanelSpace=panel_space,
+        PanelHeightMode=panel_height_mode,
+        PanelOption=panel_option,
         tr=lambda key: key,
         get_current_language=lambda: state.language[0],
     )
@@ -153,18 +166,18 @@ def test_scripts_panel_builds_retained_records(scripts_panel_module):
         {
             "index": "0",
             "filename": "alpha.py",
-            "path_text": "scripts_panel.path: /tmp/alpha.py",
+            "path": "/tmp/alpha.py",
             "enabled": True,
             "has_error": False,
-            "error_text": "",
+            "error_message": "",
         },
         {
             "index": "1",
             "filename": "beta.py",
-            "path_text": "scripts_panel.path: /tmp/beta.py",
+            "path": "/tmp/beta.py",
             "enabled": False,
             "has_error": True,
-            "error_text": "scripts_panel.error: boom",
+            "error_message": "boom",
         },
     ]
 

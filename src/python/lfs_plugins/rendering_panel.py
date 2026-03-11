@@ -118,12 +118,12 @@ def _hex_to_color(h):
 
 
 class RenderingPanel(Panel):
-    idname = "lfs.rendering"
+    id = "lfs.rendering"
     label = "Rendering"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 10
     template = "rmlui/rendering.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     update_interval_ms = 100
 
     def __init__(self):

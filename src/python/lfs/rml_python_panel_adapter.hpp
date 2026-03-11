@@ -48,6 +48,12 @@ namespace lfs::vis::gui {
         void setForeground(bool fg);
 
     private:
+        enum class LifecycleState : uint8_t {
+            AwaitingModelBind,
+            ModelBound,
+            Mounted,
+        };
+
         bool ensureHost();
         void cachePythonCapabilities();
         void bindModelIfNeeded();
@@ -55,6 +61,10 @@ namespace lfs::vis::gui {
         bool reloadDocumentForLanguage(const std::string& language);
         void callOnUnload(Rml::ElementDocument* doc);
         void callOnLoad(Rml::ElementDocument* doc);
+        bool isModelBound() const;
+        bool isMounted() const;
+        void setLifecycleState(LifecycleState next_state);
+        void resetLifecycle();
         void syncDirectLayout(float w, float h);
         void drawImmediateLayout(Rml::ElementDocument* doc, const PanelDrawContext* ctx);
         Rml::ElementDocument* prepareForRender(const PanelDrawContext* ctx);
@@ -66,8 +76,7 @@ namespace lfs::vis::gui {
         std::string rml_path_;
         std::string style_;
         nb::object panel_instance_;
-        bool loaded_ = false;
-        bool model_bound_ = false;
+        LifecycleState lifecycle_state_ = LifecycleState::AwaitingModelBind;
         bool has_bind_model_ = false;
         bool bind_model_checked_ = false;
         bool has_poll_ = false;

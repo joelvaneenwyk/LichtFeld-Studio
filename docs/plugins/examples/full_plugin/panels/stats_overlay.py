@@ -6,7 +6,7 @@ from lfs_plugins.ui.state import AppState
 
 class StatsOverlay(lf.ui.Panel):
     label = "Analyzer Stats"
-    space = "VIEWPORT_OVERLAY"
+    space = lf.ui.PanelSpace.VIEWPORT_OVERLAY
     order = 20
 
     @classmethod

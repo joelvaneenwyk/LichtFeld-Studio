@@ -72,7 +72,14 @@ class PluginContext:
     @classmethod
     def build(cls, registry: "CapabilityRegistry", include_view: bool = True) -> "PluginContext":
         """Build context from current application state."""
-        import lichtfeld as lf
+        try:
+            import lichtfeld as lf
+        except ModuleNotFoundError:
+            return cls(
+                scene=None,
+                view=None,
+                capabilities=CapabilityBroker(registry),
+            )
 
         # Get scene
         scene_ctx = None

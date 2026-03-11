@@ -36,7 +36,7 @@ class DemoSettings(PropertyGroup):
 
 class DemoPanel(lf.ui.Panel):
     label = "Widget Demo"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 150
 
     def __init__(self):

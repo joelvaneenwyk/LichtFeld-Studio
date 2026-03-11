@@ -8,7 +8,7 @@ import lichtfeld as lf
 
 class HelloPanel(lf.ui.Panel):
     label = "Hello World"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 200
 
     def draw(self, ui):

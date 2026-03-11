@@ -120,9 +120,9 @@ import lichtfeld as lf
 
 
 class HelloPanel(lf.ui.Panel):
-    idname = "hello_world.main_panel"
+    id = "hello_world.main_panel"
     label = "Hello World"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 200
 
     def __init__(self):
@@ -148,17 +148,21 @@ import lichtfeld as lf
 
 
 class MyPanel(lf.ui.Panel):
-    idname = "my_plugin.panel"
+    id = "my_plugin.panel"
     label = "My Panel"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     parent = ""
     order = 100
     options = set()
-    poll_deps = {"SCENE", "SELECTION", "TRAINING"}
+    poll_dependencies = {
+        lf.ui.PollDependency.SCENE,
+        lf.ui.PollDependency.SELECTION,
+        lf.ui.PollDependency.TRAINING,
+    }
     size = None
     template = ""
     style = ""
-    height_mode = "fill"
+    height_mode = lf.ui.PanelHeightMode.FILL
     update_interval_ms = 100
 
     @classmethod
@@ -171,18 +175,22 @@ class MyPanel(lf.ui.Panel):
 
 | Attribute | Type | Default | Description |
 |---|---|---|---|
-| `idname` | `str` | `module.qualname` | Unique panel identifier. Used for replacement, visibility, and API lookups. |
-| `label` | `str` | `""` | Display name in the UI. |
-| `space` | `str` | `"MAIN_PANEL_TAB"` | Where the panel appears when `parent` is empty. |
-| `parent` | `str` | `""` | Parent tab idname. When set, the panel embeds as a collapsible section and `space` is ignored. |
+| `id` | `str` | `module.qualname` | Unique panel identifier. Used for replacement, visibility, and API lookups. |
+| `label` | `str` | `""` | Display name in the UI. Falls back to `id` when empty. |
+| `space` | `lf.ui.PanelSpace` | `lf.ui.PanelSpace.MAIN_PANEL_TAB` | Where the panel appears when `parent` is empty. |
+| `parent` | `str` | `""` | Parent panel id. When set, the panel embeds as a collapsible section and must not also override `space`. |
 | `order` | `int` | `100` | Sort order within its space. Lower values appear earlier. |
-| `options` | `set[str]` | `set()` | Panel options such as `"DEFAULT_CLOSED"` and `"HIDE_HEADER"`. |
-| `poll_deps` | `set[str]` | `{"SCENE", "SELECTION", "TRAINING"}` | Which app-state changes should re-run `poll()`. |
+| `options` | `set[lf.ui.PanelOption]` | `set()` | Panel options such as `lf.ui.PanelOption.DEFAULT_CLOSED` and `lf.ui.PanelOption.HIDE_HEADER`. |
+| `poll_dependencies` | `set[lf.ui.PollDependency]` | `{SCENE, SELECTION, TRAINING}` | Which app-state changes should re-run `poll()`. |
 | `size` | `tuple[float, float] \| None` | `None` | Initial width/height hint, mainly useful for floating panels. |
-| `template` | `str` | `""` | Optional retained RML template. Use an absolute path for plugin-local files. |
+| `template` | `str \| os.PathLike[str]` | `""` | Optional retained RML template. Use an absolute path for plugin-local files. |
 | `style` | `str` | `""` | Optional inline RCSS appended to the retained document. This is RCSS text, not a file path. |
-| `height_mode` | `str` | `"fill"` | `"fill"` or `"content"` for retained panels. |
+| `height_mode` | `lf.ui.PanelHeightMode` | `lf.ui.PanelHeightMode.FILL` | `FILL` or `CONTENT` for retained panels. |
 | `update_interval_ms` | `int` | `100` | Update cadence for retained/hybrid `on_update()` work. |
+
+The panel API is strict in v1: use the enum values above, not string literals.
+
+Panel definitions are validated eagerly. Invalid enum values, removed legacy fields, retained-only settings in `VIEWPORT_OVERLAY`, and conflicting fields such as `parent` plus explicit `space` raise `ValueError`, `TypeError`, or `AttributeError` during `lf.register_class()`.
 
 ### Step 2: add shell and retained behavior without rewriting `draw(ui)`
 
@@ -193,10 +201,10 @@ import lichtfeld as lf
 
 
 class StatusBarPanel(lf.ui.Panel):
-    idname = "my_plugin.status"
+    id = "my_plugin.status"
     label = "Build Up 2"
-    space = "STATUS_BAR"
-    height_mode = "content"
+    space = lf.ui.PanelSpace.STATUS_BAR
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     update_interval_ms = 120
     style = """
 body.status-bar-panel { padding: 0 12dp; }
@@ -233,7 +241,7 @@ When a panel uses retained features, LichtFeld chooses a shell automatically if 
 
 | Space | Default retained shell |
 |---|---|
-| `FLOATING`, `DOCKABLE` | `rmlui/floating_window.rml` |
+| `FLOATING` | `rmlui/floating_window.rml` |
 | `STATUS_BAR` | `rmlui/status_bar_panel.rml` |
 | Other retained panel spaces | `rmlui/docked_panel.rml` |
 
@@ -275,11 +283,11 @@ MODEL_NAME = "my_plugin_hybrid"
 
 
 class HybridPanel(lf.ui.Panel):
-    idname = "my_plugin.hybrid"
+    id = "my_plugin.hybrid"
     label = "Hybrid"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     template = str(Path(__file__).resolve().with_name("main_panel.rml"))
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
 
     def draw(self, ui):
         ui.text_disabled("This block is rendered into #im-root.")
@@ -319,11 +327,10 @@ See the complete multi-file example in [`examples/03_hybrid_plugin/`](examples/0
 | Space | Description |
 |---|---|
 | `MAIN_PANEL_TAB` | Own tab in the right panel. Default for plugin panels. |
-| `SIDE_PANEL` | Right sidebar panel. Legacy; prefer `parent` when embedding into built-in tabs. |
+| `SIDE_PANEL` | Right sidebar panel. |
 | `VIEWPORT_OVERLAY` | Drawn over the 3D viewport. |
 | `SCENE_HEADER` | Header area above the scene tree. |
 | `FLOATING` | Free-floating window. |
-| `DOCKABLE` | Deprecated alias of `FLOATING`. |
 | `STATUS_BAR` | Bottom status bar. |
 
 ### Embedding in an existing tab
@@ -358,16 +365,16 @@ lf.unregister_class(MyPanel)
 
 ### Panel replacement
 
-Registering a panel with the same `idname` as an existing panel replaces it. This is how plugins override built-in panels:
+Registering a panel with the same `id` as an existing panel replaces it. This is how plugins override built-in panels:
 
 ```python
 import lichtfeld as lf
 
 
 class MyTrainingPanel(lf.ui.Panel):
-    idname = "lfs.training"
+    id = "lfs.training"
     label = "Training"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 20
 
     def draw(self, ui):
@@ -387,10 +394,12 @@ lf.ui.is_panel_enabled("my_plugin.panel")
 lf.ui.get_panel("my_plugin.panel")
 lf.ui.set_panel_label("my_plugin.panel", "New Name")
 lf.ui.set_panel_order("my_plugin.panel", 50)
-lf.ui.set_panel_space("my_plugin.panel", "FLOATING")
+lf.ui.set_panel_space("my_plugin.panel", lf.ui.PanelSpace.FLOATING)
 lf.ui.set_panel_parent("my_plugin.panel", "lfs.rendering")
-lf.ui.get_panel_names("MAIN_PANEL_TAB")
+lf.ui.get_panel_names(lf.ui.PanelSpace.MAIN_PANEL_TAB)
 ```
+
+`lf.ui.get_panel()` returns a typed `lf.ui.PanelInfo | None`, and `lf.ui.get_main_panel_tabs()` returns `list[lf.ui.PanelSummary]`.
 
 ### Layout composition
 
@@ -430,7 +439,7 @@ from lfs_plugins.ui.state import AppState
 
 class StatsOverlay(lf.ui.Panel):
     label = "Stats"
-    space = "VIEWPORT_OVERLAY"
+    space = lf.ui.PanelSpace.VIEWPORT_OVERLAY
     order = 10
 
     @classmethod
@@ -449,7 +458,7 @@ Use `image_tensor` to render a CUDA tensor directly in a panel with no manual te
 ```python
 class PreviewPanel(lf.ui.Panel):
     label = "Preview"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
 
     def draw(self, ui):
         tensor = lf.Tensor.rand([256, 256, 3], device="cuda")
@@ -463,7 +472,7 @@ For advanced use cases, use `DynamicTexture`:
 ```python
 class AdvancedPanel(lf.ui.Panel):
     label = "Advanced"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
 
     def __init__(self):
         self.tex = lf.ui.DynamicTexture()
@@ -1105,7 +1114,7 @@ from lfs_plugins.ui.signals import Signal
 
 class TrainingMonitor(lf.ui.Panel):
     label = "Training Monitor"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 50
 
     def __init__(self):
@@ -1388,6 +1397,18 @@ Type stubs are generated at `build/src/python/typings/` and provide autocomplete
 - `lichtfeld.scene` - Scene types
 - `lichtfeld.selection` - Selection types
 - `lichtfeld.plugins` - Plugin management
+
+The committed SDK stubs live in `src/python/stubs/` and are checked against the generated output during the build. If you intentionally change the Python API surface, refresh the committed stubs with:
+
+```bash
+cmake --build build --target refresh_python_stubs
+```
+
+You can also run the check explicitly with:
+
+```bash
+cmake --build build --target check_python_stubs
+```
 
 ### debugpy attach
 

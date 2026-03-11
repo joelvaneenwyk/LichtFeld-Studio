@@ -49,9 +49,9 @@ import lichtfeld as lf
 class MainPanel(lf.ui.Panel):
     """Example plugin panel using the unified Panel API."""
 
-    idname = "{name}.main_panel"
+    id = "{name}.main_panel"
     label = "{title}"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 100
 
     def __init__(self):

@@ -17,7 +17,7 @@ class MonitorSettings(PropertyGroup):
 
 class TrainingMonitorPanel(lf.ui.Panel):
     label = "Training Monitor"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 40
 
     def __init__(self):

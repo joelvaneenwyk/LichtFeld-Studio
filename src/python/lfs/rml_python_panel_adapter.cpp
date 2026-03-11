@@ -16,6 +16,42 @@
 
 namespace lfs::vis::gui {
 
+    bool RmlPythonPanelAdapter::isModelBound() const {
+        return lifecycle_state_ == LifecycleState::ModelBound ||
+               lifecycle_state_ == LifecycleState::Mounted;
+    }
+
+    bool RmlPythonPanelAdapter::isMounted() const {
+        return lifecycle_state_ == LifecycleState::Mounted;
+    }
+
+    void RmlPythonPanelAdapter::setLifecycleState(const LifecycleState next_state) {
+        switch (lifecycle_state_) {
+        case LifecycleState::AwaitingModelBind:
+            assert(next_state == LifecycleState::AwaitingModelBind ||
+                   next_state == LifecycleState::ModelBound);
+            break;
+        case LifecycleState::ModelBound:
+            assert(next_state == LifecycleState::AwaitingModelBind ||
+                   next_state == LifecycleState::ModelBound ||
+                   next_state == LifecycleState::Mounted);
+            break;
+        case LifecycleState::Mounted:
+            assert(next_state == LifecycleState::AwaitingModelBind ||
+                   next_state == LifecycleState::ModelBound ||
+                   next_state == LifecycleState::Mounted);
+            break;
+        }
+        lifecycle_state_ = next_state;
+    }
+
+    void RmlPythonPanelAdapter::resetLifecycle() {
+        setLifecycleState(LifecycleState::AwaitingModelBind);
+        content_dirty_ = true;
+        last_prepare_frame_ = 0;
+        next_update_at_ = std::chrono::steady_clock::time_point{};
+    }
+
     bool RmlPythonPanelAdapter::ensureHost() {
         if (host_)
             return true;
@@ -51,7 +87,7 @@ namespace lfs::vis::gui {
     }
 
     void RmlPythonPanelAdapter::bindModelIfNeeded() {
-        if (model_bound_)
+        if (isModelBound())
             return;
 
         const auto& ops = lfs::python::get_rml_panel_host_ops();
@@ -61,7 +97,7 @@ namespace lfs::vis::gui {
         const lfs::python::GilAcquire gil;
         cachePythonCapabilities();
         if (!has_bind_model_) {
-            model_bound_ = true;
+            setLifecycleState(LifecycleState::ModelBound);
             return;
         }
 
@@ -73,14 +109,14 @@ namespace lfs::vis::gui {
         try {
             auto py_ctx = lfs::python::PyRmlContext(rml_ctx);
             panel_instance_.attr("on_bind_model")(py_ctx);
-            model_bound_ = true;
+            setLifecycleState(LifecycleState::ModelBound);
         } catch (const std::exception& e) {
             LOG_ERROR("Panel on_bind_model error: {}", e.what());
         }
     }
 
     void RmlPythonPanelAdapter::callOnUnload(Rml::ElementDocument* doc) {
-        if (!doc || !loaded_ || !lfs::python::can_acquire_gil())
+        if (!doc || !isMounted() || !lfs::python::can_acquire_gil())
             return;
 
         const lfs::python::GilAcquire gil;
@@ -93,10 +129,11 @@ namespace lfs::vis::gui {
         } catch (const std::exception& e) {
             LOG_ERROR("Panel on_unmount error: {}", e.what());
         }
+        setLifecycleState(LifecycleState::ModelBound);
     }
 
     void RmlPythonPanelAdapter::callOnLoad(Rml::ElementDocument* doc) {
-        if (!doc || !lfs::python::can_acquire_gil())
+        if (!doc || isMounted() || !lfs::python::can_acquire_gil())
             return;
 
         const lfs::python::GilAcquire gil;
@@ -106,7 +143,7 @@ namespace lfs::vis::gui {
             auto py_doc = lfs::python::PyRmlDocument(doc);
             panel_instance_.attr("on_mount")(py_doc);
             content_dirty_ = true;
-            loaded_ = true;
+            setLifecycleState(LifecycleState::Mounted);
         } catch (const std::exception& e) {
             LOG_ERROR("Panel on_mount error: {}", e.what());
         }
@@ -126,19 +163,19 @@ namespace lfs::vis::gui {
         if (!doc)
             return nullptr;
 
-        if (!loaded_) {
-            assert(model_bound_);
+        if (!isMounted()) {
+            assert(isModelBound());
             callOnLoad(doc);
         }
 
-        if (loaded_ && last_language_.empty())
+        if (isMounted() && last_language_.empty())
             last_language_ = lfs::event::LocalizationManager::getInstance().getCurrentLanguage();
 
         return doc;
     }
 
     bool RmlPythonPanelAdapter::reloadDocumentForLanguage(const std::string& language) {
-        if (!loaded_ || language.empty() || !lfs::python::can_acquire_gil())
+        if (!isMounted() || language.empty() || !lfs::python::can_acquire_gil())
             return false;
 
         const auto& ops = lfs::python::get_rml_panel_host_ops();
@@ -151,19 +188,14 @@ namespace lfs::vis::gui {
         callOnUnload(current_doc);
         lfs::python::RmlDocumentRegistry::instance().unregister_document(context_name_);
 
-        model_bound_ = false;
+        resetLifecycle();
         bindModelIfNeeded();
 
         if (!ops.reload_document(host_)) {
             LOG_ERROR("Panel reload_document failed for '{}'", context_name_);
-            loaded_ = false;
+            resetLifecycle();
             return false;
         }
-
-        loaded_ = false;
-        content_dirty_ = true;
-        last_prepare_frame_ = 0;
-        next_update_at_ = std::chrono::steady_clock::time_point{};
 
         auto* new_doc = static_cast<Rml::ElementDocument*>(ops.get_document(host_));
         if (!new_doc)
@@ -188,7 +220,7 @@ namespace lfs::vis::gui {
         if (!has_draw_ || !doc || !lfs::python::can_acquire_gil())
             return;
 
-        assert(loaded_);
+        assert(isMounted());
 
         if (lfs::python::bridge().prepare_ui)
             lfs::python::bridge().prepare_ui();
@@ -274,7 +306,7 @@ namespace lfs::vis::gui {
         const bool should_run_update = scene_changed || pending_dirty || update_due;
 
         if (should_run_update) {
-            assert(loaded_);
+            assert(isMounted());
             const lfs::python::GilAcquire gil;
             auto py_doc = lfs::python::PyRmlDocument(doc);
 
@@ -382,7 +414,7 @@ namespace lfs::vis::gui {
     }
 
     void RmlPythonPanelAdapter::preload(const PanelDrawContext& ctx) {
-        if (loaded_)
+        if (isMounted())
             return;
         prepareForRender(&ctx);
     }

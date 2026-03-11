@@ -12,12 +12,27 @@ import pytest
 
 def _install_lf_stub(monkeypatch):
     state = SimpleNamespace(translations={})
+    panel_space = SimpleNamespace(
+        SIDE_PANEL="SIDE_PANEL",
+        FLOATING="FLOATING",
+        VIEWPORT_OVERLAY="VIEWPORT_OVERLAY",
+        MAIN_PANEL_TAB="MAIN_PANEL_TAB",
+        SCENE_HEADER="SCENE_HEADER",
+        STATUS_BAR="STATUS_BAR",
+    )
+    panel_height_mode = SimpleNamespace(FILL="fill", CONTENT="content")
+    panel_option = SimpleNamespace(DEFAULT_CLOSED="DEFAULT_CLOSED", HIDE_HEADER="HIDE_HEADER")
 
     def tr(key):
         return state.translations.get(key, key)
 
     lf_stub = ModuleType("lichtfeld")
-    lf_stub.ui = SimpleNamespace(tr=tr)
+    lf_stub.ui = SimpleNamespace(
+        PanelSpace=panel_space,
+        PanelHeightMode=panel_height_mode,
+        PanelOption=panel_option,
+        tr=tr,
+    )
     monkeypatch.setitem(sys.modules, "lichtfeld", lf_stub)
     return state
 

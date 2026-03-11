@@ -1,7 +1,7 @@
 """Step 2: draw(ui) plus retained shell features.
 
 This example keeps draw(ui) as the content source while adding:
-- space = "STATUS_BAR"
+- space = lf.ui.PanelSpace.STATUS_BAR
 - style
 - height_mode
 - update_interval_ms
@@ -12,11 +12,11 @@ import lichtfeld as lf
 
 
 class StatusBarMixedPanel(lf.ui.Panel):
-    idname = "docs.status_bar_mixed"
+    id = "docs.status_bar_mixed"
     label = "Status Bar Mixed"
-    space = "STATUS_BAR"
+    space = lf.ui.PanelSpace.STATUS_BAR
     order = 50
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     update_interval_ms = 140
     style = """
 body.status-bar-panel {

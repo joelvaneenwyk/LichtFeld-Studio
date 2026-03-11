@@ -453,7 +453,7 @@ namespace lfs::vis::gui {
         last_layout_w_ = pw;
         last_layout_h_ = ph;
 
-        if (height_mode_ == HeightMode::Content) {
+        if (height_mode_ == PanelHeightMode::Content) {
             last_content_height_ = computeContentHeight();
             if (content_el_)
                 last_content_el_height_ = content_el_->GetOffsetHeight();
@@ -491,7 +491,7 @@ namespace lfs::vis::gui {
             return;
 
         const bool need_content_measure =
-            height_mode_ == HeightMode::Content &&
+            height_mode_ == PanelHeightMode::Content &&
             (pw != last_measure_w_ || ph != last_layout_h_ || content_dirty_ ||
              last_content_height_ <= 0.0f);
         const float saved_scroll = scroll_el_ ? scroll_el_->GetScrollTop() : 0.0f;
@@ -559,7 +559,7 @@ namespace lfs::vis::gui {
         }
 
         content_dirty_ = false;
-        if (height_mode_ != HeightMode::Content)
+        if (height_mode_ != PanelHeightMode::Content)
             last_content_height_ = display_h;
 
         auto* render = manager_->getRenderInterface();
@@ -582,7 +582,7 @@ namespace lfs::vis::gui {
         last_fbo_h_ = ph;
         render_needed_ = false;
 
-        if (height_mode_ == HeightMode::Content) {
+        if (height_mode_ == PanelHeightMode::Content) {
             const float prev_content_h = last_content_height_;
             const float actual_content_h = computeContentHeight();
             last_content_height_ = actual_content_h;
@@ -616,7 +616,7 @@ namespace lfs::vis::gui {
 
         int h;
         float display_h;
-        if (height_mode_ == HeightMode::Content) {
+        if (height_mode_ == PanelHeightMode::Content) {
             h = std::max(1, static_cast<int>(std::ceil(last_content_height_)));
             display_h = last_content_height_;
         } else {
@@ -646,7 +646,7 @@ namespace lfs::vis::gui {
     }
 
     void RmlPanelHost::resolveDirectRenderHeight(float requested_h, int& ph, float& display_h) const {
-        if (height_mode_ == HeightMode::Content) {
+        if (height_mode_ == PanelHeightMode::Content) {
             const float ch = last_content_height_;
             if (ch > 0 && requested_h < ch) {
                 ph = static_cast<int>(requested_h);

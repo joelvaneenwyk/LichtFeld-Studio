@@ -79,12 +79,12 @@ class _ImportDialogPanel(Panel):
 class DatasetImportPanel(_ImportDialogPanel):
     """Floating panel for configuring dataset import paths."""
 
-    idname = "lfs.dataset_import"
+    id = "lfs.dataset_import"
     label = "Load Dataset"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 11
     template = "rmlui/dataset_import_panel.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     size = (560, 0)
     form_id = "dataset-import-form"
 
@@ -140,7 +140,7 @@ class DatasetImportPanel(_ImportDialogPanel):
         self._output_path = str(Path(info.base_path) / "output")
         self._init_path = ""
         self._dirty_model()
-        lf.ui.set_panel_enabled(self.idname, True)
+        lf.ui.set_panel_enabled(self.id, True)
         return True
 
     def _can_submit_from_keyboard(self) -> bool:
@@ -204,7 +204,7 @@ class DatasetImportPanel(_ImportDialogPanel):
         base_path = str(self._dataset_info.base_path)
         init_path = self._init_path.strip()
 
-        lf.ui.set_panel_enabled(self.idname, False)
+        lf.ui.set_panel_enabled(self.id, False)
         lf.load_file(
             base_path,
             is_dataset=True,
@@ -213,18 +213,18 @@ class DatasetImportPanel(_ImportDialogPanel):
         )
 
     def _on_do_cancel(self, _handle=None, _ev=None, _args=None):
-        lf.ui.set_panel_enabled(self.idname, False)
+        lf.ui.set_panel_enabled(self.id, False)
 
 
 class ResumeCheckpointPanel(_ImportDialogPanel):
     """Floating panel for configuring checkpoint resume paths."""
 
-    idname = "lfs.resume_checkpoint"
+    id = "lfs.resume_checkpoint"
     label = "Resume Checkpoint"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 12
     template = "rmlui/resume_checkpoint_panel.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     size = (580, 0)
     form_id = "resume-checkpoint-form"
 
@@ -292,7 +292,7 @@ class ResumeCheckpointPanel(_ImportDialogPanel):
         self._stored_dataset_exists = self._validate_dataset(self._stored_dataset_path)
         self._dataset_valid = self._stored_dataset_exists
         self._dirty_model()
-        lf.ui.set_panel_enabled(self.idname, True)
+        lf.ui.set_panel_enabled(self.id, True)
         return True
 
     def _can_submit_from_keyboard(self) -> bool:
@@ -364,7 +364,7 @@ class ResumeCheckpointPanel(_ImportDialogPanel):
         if not self._dataset_valid or not self._checkpoint_path:
             return
 
-        lf.ui.set_panel_enabled(self.idname, False)
+        lf.ui.set_panel_enabled(self.id, False)
         lf.load_checkpoint_for_training(
             self._checkpoint_path,
             self._dataset_path,
@@ -372,4 +372,4 @@ class ResumeCheckpointPanel(_ImportDialogPanel):
         )
 
     def _on_do_cancel(self, _handle=None, _ev=None, _args=None):
-        lf.ui.set_panel_enabled(self.idname, False)
+        lf.ui.set_panel_enabled(self.id, False)

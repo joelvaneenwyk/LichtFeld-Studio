@@ -7,9 +7,9 @@ import lichtfeld as lf
 
 
 class DrawOnlyPanel(lf.ui.Panel):
-    idname = "docs.draw_only_panel"
+    id = "docs.draw_only_panel"
     label = "Draw Only"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 200
 
     def __init__(self):

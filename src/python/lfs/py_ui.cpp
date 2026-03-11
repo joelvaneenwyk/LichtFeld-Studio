@@ -520,7 +520,7 @@ namespace lfs::python {
 
         // Window flags for Python bindings
         struct PyWindowFlags {
-            static constexpr int None = 0;
+            static constexpr int NONE = 0;
             static constexpr int NoScrollbar = ImGuiWindowFlags_NoScrollbar;
             static constexpr int NoScrollWithMouse = ImGuiWindowFlags_NoScrollWithMouse;
             static constexpr int MenuBar = ImGuiWindowFlags_MenuBar;
@@ -3319,7 +3319,7 @@ namespace lfs::python {
 
         // PyUILayout - Window flags enum
         nb::class_<PyWindowFlags>(m, "WindowFlags")
-            .def_ro_static("None", &PyWindowFlags::None, "No flags set")
+            .def_ro_static("NONE", &PyWindowFlags::NONE, "No flags set")
             .def_ro_static("NoScrollbar", &PyWindowFlags::NoScrollbar, "Disable scrollbar")
             .def_ro_static("NoScrollWithMouse", &PyWindowFlags::NoScrollWithMouse, "Disable mouse wheel scrolling")
             .def_ro_static("MenuBar", &PyWindowFlags::MenuBar, "Enable menu bar")
@@ -5089,7 +5089,7 @@ namespace lfs::python {
                 nb::module_ builtins = nb::module_::import_("builtins");
                 auto issubclass = builtins.attr("issubclass");
 
-                nb::object Panel_type = nb::module_::import_("lfs_ui_panel").attr("Panel");
+                nb::object Panel_type = nb::module_::import_("lichtfeld").attr("ui").attr("Panel");
                 nb::module_ types_module = nb::module_::import_("lfs_plugins.types");
                 nb::object Operator_type = types_module.attr("Operator");
                 const nb::object Menu_type = types_module.attr("Menu");
@@ -5107,7 +5107,8 @@ namespace lfs::python {
                 } else if (nb::cast<bool>(issubclass(cls, Menu_type))) {
                     PyMenuRegistry::instance().register_menu(cls);
                 } else {
-                    throw std::runtime_error("register_class: must be subclass of Panel, Operator, or Menu");
+                    throw nb::type_error(
+                        "register_class: cls must be a subclass of Panel, Operator, or Menu");
                 }
             },
             nb::arg("cls"), "Register a class (Panel, Operator, or Menu)");
@@ -5118,7 +5119,7 @@ namespace lfs::python {
                 nb::module_ builtins = nb::module_::import_("builtins");
                 auto issubclass = builtins.attr("issubclass");
 
-                nb::object Panel_type = nb::module_::import_("lfs_ui_panel").attr("Panel");
+                nb::object Panel_type = nb::module_::import_("lichtfeld").attr("ui").attr("Panel");
                 nb::module_ types_module = nb::module_::import_("lfs_plugins.types");
                 nb::object Operator_type = types_module.attr("Operator");
                 const nb::object Menu_type = types_module.attr("Menu");

@@ -7,7 +7,7 @@ import lichtfeld as lf
 
 class LayoutBasicsPanel(lf.ui.Panel):
     label = "Layout Basics"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 300
 
     def __init__(self):

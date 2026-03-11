@@ -20,7 +20,7 @@ class AnalyzerSettings(PropertyGroup):
 
 class AnalyzerPanel(lf.ui.Panel):
     label = "Gaussian Analyzer"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 45
 
     def __init__(self):

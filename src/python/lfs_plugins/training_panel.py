@@ -225,12 +225,12 @@ def _hex_to_color(h):
 
 
 class TrainingPanel(Panel):
-    idname = "lfs.training"
+    id = "lfs.training"
     label = "Training"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 20
     template = "rmlui/training.rml"
-    height_mode = "fill"
+    height_mode = lf.ui.PanelHeightMode.FILL
     update_interval_ms = 16
 
     def __init__(self):

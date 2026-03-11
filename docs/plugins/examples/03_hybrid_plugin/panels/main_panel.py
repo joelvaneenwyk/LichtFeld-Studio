@@ -9,12 +9,12 @@ MODEL_NAME = "hybrid_panel_demo"
 
 
 class HybridPanel(lf.ui.Panel):
-    idname = "docs.hybrid_panel"
+    id = "docs.hybrid_panel"
     label = "Hybrid Panel"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 220
     template = str(Path(__file__).resolve().with_name("main_panel.rml"))
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     update_interval_ms = 200
 
     def __init__(self):

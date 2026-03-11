@@ -198,13 +198,121 @@ class PanelSpace(enum.Enum):
 
     VIEWPORT_OVERLAY = 2
 
-    DOCKABLE = 3
+    MAIN_PANEL_TAB = 3
 
-    MAIN_PANEL_TAB = 4
+    SCENE_HEADER = 4
 
-    SCENE_HEADER = 5
+    STATUS_BAR = 5
 
-    STATUS_BAR = 6
+class PanelHeightMode(enum.Enum):
+    FILL = 0
+
+    CONTENT = 1
+
+class PanelOption(enum.Enum):
+    DEFAULT_CLOSED = 1
+
+    HIDE_HEADER = 2
+
+class PollDependency(enum.Enum):
+    NONE = 0
+
+    SELECTION = 1
+
+    TRAINING = 2
+
+    SCENE = 4
+
+    ALL = 7
+
+class Panel:
+    """Public base class for all Python UI panels."""
+
+    id: str = ''
+
+    label: str = ''
+
+    space: PanelSpace = PanelSpace.MAIN_PANEL_TAB
+
+    parent: str = ''
+
+    order: int = 100
+
+    options: set = ...
+
+    poll_dependencies: set = ...
+
+    size: None = None
+
+    template: str = ''
+
+    style: str = ''
+
+    height_mode: PanelHeightMode = PanelHeightMode.FILL
+
+    update_interval_ms: int = 100
+
+    @classmethod
+    def poll(cls, context) -> bool: ...
+
+    def draw(self, ui): ...
+
+    def on_bind_model(self, ctx): ...
+
+    def on_mount(self, doc): ...
+
+    def on_unmount(self, doc): ...
+
+    def on_update(self, doc): ...
+
+    def on_scene_changed(self, doc): ...
+
+class PanelSummary:
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def label(self) -> str: ...
+
+    @property
+    def space(self) -> PanelSpace: ...
+
+    @property
+    def order(self) -> int: ...
+
+    @property
+    def enabled(self) -> bool: ...
+
+class PanelInfo:
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def label(self) -> str: ...
+
+    @property
+    def parent(self) -> str: ...
+
+    @property
+    def space(self) -> PanelSpace: ...
+
+    @property
+    def order(self) -> int: ...
+
+    @property
+    def enabled(self) -> bool: ...
+
+    @property
+    def options(self) -> set: ...
+
+    @property
+    def poll_dependencies(self) -> set: ...
+
+    @property
+    def is_native(self) -> bool: ...
+
+    @property
+    def size(self) -> object: ...
 
 def unregister_all_panels() -> None:
     """Unregister all Python panels"""
@@ -212,31 +320,31 @@ def unregister_all_panels() -> None:
 def unregister_panels_for_module(module_prefix: str) -> None:
     """Unregister all panels registered by a given module prefix"""
 
-def get_panel_names(space: str = 'FLOATING') -> list[str]:
-    """Get registered panel names for a given space"""
+def get_panel_names(space: PanelSpace = PanelSpace.FLOATING) -> list[str]:
+    """Get registered panel ids for a given space"""
 
-def set_panel_enabled(idname: str, enabled: bool) -> None:
-    """Enable or disable a panel by idname"""
+def set_panel_enabled(panel_id: str, enabled: bool) -> None:
+    """Enable or disable a panel by id"""
 
-def is_panel_enabled(idname: str) -> bool:
+def is_panel_enabled(panel_id: str) -> bool:
     """Check if a panel is enabled"""
 
-def get_main_panel_tabs() -> list:
-    """Get all main panel tabs as list of dicts"""
+def get_main_panel_tabs() -> list[PanelSummary]:
+    """Get all main panel tabs as typed panel summaries"""
 
-def get_panel(idname: str) -> object:
-    """Get panel info by idname (None if not found)"""
+def get_panel(panel_id: str) -> PanelInfo | None:
+    """Get typed panel info by id (None if not found)"""
 
-def set_panel_label(idname: str, label: str) -> bool:
+def set_panel_label(panel_id: str, label: str) -> bool:
     """Set the display label for a panel"""
 
-def set_panel_order(idname: str, order: int) -> bool:
+def set_panel_order(panel_id: str, order: int) -> bool:
     """Set the sort order for a panel"""
 
-def set_panel_space(idname: str, space: str) -> bool:
+def set_panel_space(panel_id: str, space: PanelSpace) -> bool:
     """Set the panel space (where it renders)"""
 
-def set_panel_parent(idname: str, parent: str) -> bool:
+def set_panel_parent(panel_id: str, parent: str) -> bool:
     """Set the parent panel (embeds as collapsible section)"""
 
 def has_main_panel_tabs() -> bool:
@@ -1156,7 +1264,7 @@ class SubLayout:
     def __getattr__(self, arg: str, /) -> object: ...
 
 class WindowFlags:
-    None: int = ...
+    NONE: int = ...
     """No flags set"""
 
     NoScrollbar: int = ...

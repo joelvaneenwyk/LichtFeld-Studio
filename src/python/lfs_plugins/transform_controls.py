@@ -77,12 +77,12 @@ class TransformPanelState:
 
 
 class TransformControlsPanel(Panel):
-    idname = "lfs.transform_controls"
+    id = "lfs.transform_controls"
     label = "Transform"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 120
     template = "rmlui/transform_controls.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     update_interval_ms = 16
 
     def __init__(self):

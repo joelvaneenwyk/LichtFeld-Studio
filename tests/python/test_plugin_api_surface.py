@@ -92,3 +92,55 @@ def test_rml_widgets_collapsible_uses_text_for_arrow(monkeypatch):
     arrow = header.children_list[0]
     assert arrow.text == chr(0x25B6)
     assert arrow.inner_rml is None
+
+
+def test_ui_stub_surface_matches_panel_api_names():
+    stub_path = PROJECT_ROOT / "src" / "python" / "stubs" / "lichtfeld" / "ui" / "__init__.pyi"
+    stub_text = stub_path.read_text()
+
+    assert "class PanelInfo:" in stub_text
+    assert "class PanelSummary:" in stub_text
+    assert "poll_dependencies" in stub_text
+    assert "idname:" not in stub_text
+    assert "poll_deps" not in stub_text
+    assert "space: PanelSpace = PanelSpace.MAIN_PANEL_TAB" in stub_text
+    assert "PanelSpace | str" not in stub_text
+    assert "def get_panel_names(space: PanelSpace = PanelSpace.FLOATING)" in stub_text
+    assert "def set_panel_space(panel_id: str, space: PanelSpace)" in stub_text
+    assert "    NONE: int = ..." in stub_text
+    assert "    None: int = ..." not in stub_text
+
+
+def test_python_stub_workflow_uses_explicit_sync_and_check_targets():
+    cmake_path = PROJECT_ROOT / "src" / "python" / "CMakeLists.txt"
+    cmake_text = cmake_path.read_text()
+
+    assert "refresh_python_stubs" in cmake_text
+    assert "check_python_stubs" in cmake_text
+    assert "Syncing stubs to source tree" not in cmake_text
+    assert "lfs_ui_panel.py" not in cmake_text
+    assert "_lfs_panel_contract.py" in cmake_text
+    assert not (PROJECT_ROOT / "src" / "python" / "lfs_ui_panel.py").exists()
+
+
+def test_panel_core_sources_use_v1_internal_names():
+    panel_core_files = [
+        "src/visualizer/gui/panel_registry.hpp",
+        "src/visualizer/gui/panel_registry.cpp",
+        "src/visualizer/gui/panel_layout.hpp",
+        "src/visualizer/gui/panel_layout.cpp",
+        "src/visualizer/gui/rml_right_panel.hpp",
+        "src/visualizer/gui/rml_right_panel.cpp",
+        "src/visualizer/gui/rmlui/resources/right_panel.rml",
+    ]
+
+    for rel_path in panel_core_files:
+        text = (PROJECT_ROOT / rel_path).read_text()
+        assert "idname" not in text
+        assert "parent_idname" not in text
+        assert "poll_deps" not in text
+
+    gui_manager_text = (PROJECT_ROOT / "src" / "visualizer" / "gui" / "gui_manager.cpp").read_text()
+    assert ".id = t.id" in gui_manager_text
+    assert "makeRmlTabDomId(t.id)" in gui_manager_text
+    assert ".idname = t.idname" not in gui_manager_text

@@ -1098,33 +1098,39 @@ class TestGPUOperations:
         assert str(g.gpu_data.device) == "cuda"
 
 
-class TestPanelSpaceAliases:
-    """Regression tests for panel-space compatibility aliases."""
+class TestPanelEnums:
+    """Regression tests for the typed panel enum surface."""
 
-    def test_dockable_aliases_to_floating_names(self, lf):
+    def test_floating_panels_accept_typed_space_enums(self, lf):
         if not hasattr(lf, "ui") or not hasattr(lf.ui, "Panel"):
             pytest.skip("panel API not available")
 
-        panel_id = "tests.dockable_alias_panel"
+        assert not hasattr(lf.ui.PanelSpace, "DOCKABLE")
 
-        class DockableAliasPanel(lf.ui.Panel):
-            idname = panel_id
-            label = "Dockable Alias"
-            space = "DOCKABLE"
-            options = {"DEFAULT_CLOSED"}
+        panel_id = "tests.typed_floating_panel"
+
+        class TypedFloatingPanel(lf.ui.Panel):
+            id = panel_id
+            label = "Typed Floating"
+            space = lf.ui.PanelSpace.FLOATING
+            options = {lf.ui.PanelOption.DEFAULT_CLOSED}
 
             def draw(self, ui):
                 del ui
 
-        lf.register_class(DockableAliasPanel)
         try:
-            floating_names = set(lf.ui.get_panel_names("FLOATING"))
-            if panel_id not in floating_names:
+            lf.register_class(TypedFloatingPanel)
+        except ValueError as exc:
+            if "retained UI manager" in str(exc):
                 pytest.skip("floating window registration requires an active retained UI manager")
-
-            dockable_names = set(lf.ui.get_panel_names("DOCKABLE"))
-            assert panel_id in dockable_names
-            assert lf.ui.set_panel_space(panel_id, "DOCKABLE") is True
-            assert panel_id in set(lf.ui.get_panel_names("FLOATING"))
+            raise
+        try:
+            floating_names = set(lf.ui.get_panel_names(lf.ui.PanelSpace.FLOATING))
+            panel_info = lf.ui.get_panel(panel_id)
+            assert panel_info is not None
+            assert panel_info.id == panel_id
+            assert panel_info.space == lf.ui.PanelSpace.FLOATING
+            assert lf.ui.set_panel_space(panel_id, lf.ui.PanelSpace.FLOATING) is True
+            assert panel_id in floating_names
         finally:
-            lf.unregister_class(DockableAliasPanel)
+            lf.unregister_class(TypedFloatingPanel)

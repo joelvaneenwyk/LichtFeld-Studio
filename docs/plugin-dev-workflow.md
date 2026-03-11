@@ -64,9 +64,9 @@ import lichtfeld as lf
 
 
 class MainPanel(lf.ui.Panel):
-    idname = "my_plugin.main_panel"
+    id = "my_plugin.main_panel"
     label = "My Plugin"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
 
     def draw(self, ui):
         ui.heading("Hello")
@@ -96,10 +96,10 @@ When you want retained shell styling but still want Python to generate the conte
 
 ```python
 class StatusPanel(lf.ui.Panel):
-    idname = "my_plugin.status"
+    id = "my_plugin.status"
     label = "Status"
-    space = "STATUS_BAR"
-    height_mode = "content"
+    space = lf.ui.PanelSpace.STATUS_BAR
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     style = """
 body.status-bar-panel { padding: 0 12dp; }
 #im-root .im-label { color: #f3c96d; font-weight: bold; }
@@ -124,10 +124,10 @@ from pathlib import Path
 
 
 class HybridPanel(lf.ui.Panel):
-    idname = "my_plugin.hybrid"
+    id = "my_plugin.hybrid"
     label = "Hybrid"
     template = str(Path(__file__).resolve().with_name("main_panel.rml"))
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
 
     def draw(self, ui):
         ui.text_disabled("Rendered into #im-root")

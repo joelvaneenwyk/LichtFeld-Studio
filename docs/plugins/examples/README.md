@@ -5,7 +5,7 @@ Start with these in order:
 | Step | File | What it teaches |
 |---|---|---|
 | 1 | [`01_draw_only.py`](01_draw_only.py) | The smallest useful plugin panel: one class and `draw(ui)` |
-| 2 | [`02_status_bar_mixed.py`](02_status_bar_mixed.py) | Add `style`, `height_mode`, `update_interval_ms`, `space = "STATUS_BAR"`, and `on_update()` without rewriting `draw(ui)` |
+| 2 | [`02_status_bar_mixed.py`](02_status_bar_mixed.py) | Add `style`, `height_mode`, `update_interval_ms`, `space = lf.ui.PanelSpace.STATUS_BAR`, and `on_update()` without rewriting `draw(ui)` |
 | 3 | [`03_hybrid_plugin/`](03_hybrid_plugin/) | Full retained/hybrid panel with template, RCSS, data model binding, DOM hooks, `on_unmount()`, `on_scene_changed()`, and embedded `draw(ui)` |
 
 `lf.plugins.create("name")` intentionally scaffolds step 1 only. It does not create `.rml` or `.rcss`. Add those files when you move to step 3. The CLI command `LichtFeld-Studio plugin create <name>` follows the same UI progression and only adds development helpers such as `.venv` and `.vscode`.

@@ -22,7 +22,6 @@ namespace lfs::vis::gui {
             case PanelSpace::SidePanel: return "side_panel";
             case PanelSpace::Floating: return "floating";
             case PanelSpace::ViewportOverlay: return "viewport_overlay";
-            case PanelSpace::Dockable: return "dockable";
             case PanelSpace::MainPanelTab: return "main_panel_tab";
             case PanelSpace::SceneHeader: return "scene_header";
             case PanelSpace::StatusBar: return "status_bar";
@@ -30,20 +29,8 @@ namespace lfs::vis::gui {
             return "unknown";
         }
 
-        PanelSpace canonicalizePanelSpace(const PanelSpace space) {
-            if (space != PanelSpace::Dockable)
-                return space;
-
-            static std::once_flag dockable_alias_once;
-            std::call_once(dockable_alias_once, [] {
-                LOG_WARN("Panel space 'DOCKABLE' is deprecated and now routes to the retained "
-                         "'FLOATING' window path. Remove the dockable fallback instead of relying on ImGui docking.");
-            });
-            return PanelSpace::Floating;
-        }
-
         bool requiresDirectWindowSurface(const PanelInfo& panel, const PanelSpace space) {
-            return panel.parent_idname.empty() &&
+            return panel.parent_id.empty() &&
                    space == PanelSpace::Floating &&
                    !panel.has_option(PanelOption::SELF_MANAGED);
         }
@@ -57,8 +44,8 @@ namespace lfs::vis::gui {
 
             LOG_ERROR("Panel '{}' ({}) cannot use '{}' space without direct rendering. "
                       "Window panels must be self-managed or implement supportsDirectDraw().",
-                      panel.label.empty() ? panel.idname : panel.label,
-                      panel.idname,
+                      panel.label.empty() ? panel.id : panel.label,
+                      panel.id,
                       panelSpaceName(space));
             return false;
         }
@@ -119,20 +106,19 @@ namespace lfs::vis::gui {
     bool PanelRegistry::register_panel(PanelInfo info) {
         std::lock_guard lock(mutex_);
         assert(info.panel);
-        assert(!info.idname.empty());
+        assert(!info.id.empty());
 
-        info.space = canonicalizePanelSpace(info.space);
         if (!validatePanelContract(info, info.space))
             return false;
 
         info.original_width = info.initial_width;
         info.original_height = info.initial_height;
 
-        if (disabled_overrides_.contains(info.idname))
+        if (disabled_overrides_.contains(info.id))
             info.enabled = false;
 
         for (auto& p : panels_) {
-            if (p.idname == info.idname) {
+            if (p.id == info.id) {
                 if (info.space == PanelSpace::Floating && info.float_stack_order == 0 &&
                     p.float_stack_order != 0)
                     info.float_stack_order = p.float_stack_order;
@@ -152,14 +138,14 @@ namespace lfs::vis::gui {
         return true;
     }
 
-    void PanelRegistry::unregister_panel(const std::string& idname) {
+    void PanelRegistry::unregister_panel(const std::string& id) {
         {
             std::lock_guard lock(mutex_);
-            std::erase_if(panels_, [&idname](const PanelInfo& p) { return p.idname == idname; });
+            std::erase_if(panels_, [&id](const PanelInfo& p) { return p.id == id; });
         }
         {
             std::lock_guard poll_lock(poll_mutex_);
-            poll_cache_.erase(idname);
+            poll_cache_.erase(id);
         }
     }
 
@@ -170,7 +156,7 @@ namespace lfs::vis::gui {
             std::erase_if(panels_, [](const PanelInfo& p) { return !p.is_native; });
             remaining.reserve(panels_.size());
             for (const auto& p : panels_)
-                remaining.push_back(p.idname);
+                remaining.push_back(p.id);
         }
         {
             std::lock_guard poll_lock(poll_mutex_);
@@ -192,15 +178,15 @@ namespace lfs::vis::gui {
 
         {
             std::lock_guard poll_lock(poll_mutex_);
-            auto cache_it = poll_cache_.find(snap.idname);
+            auto cache_it = poll_cache_.find(snap.id);
             if (cache_it != poll_cache_.end()) {
                 const auto& e = cache_it->second;
                 bool valid = true;
-                if ((snap.poll_deps & PollDependency::SCENE) != PollDependency::NONE)
+                if ((snap.poll_dependencies & PollDependency::SCENE) != PollDependency::NONE)
                     valid &= (e.scene_generation == gen);
-                if ((snap.poll_deps & PollDependency::SELECTION) != PollDependency::NONE)
+                if ((snap.poll_dependencies & PollDependency::SELECTION) != PollDependency::NONE)
                     valid &= (e.has_selection == has_sel);
-                if ((snap.poll_deps & PollDependency::TRAINING) != PollDependency::NONE)
+                if ((snap.poll_dependencies & PollDependency::TRAINING) != PollDependency::NONE)
                     valid &= (e.is_training == training);
                 if (valid)
                     return e.result;
@@ -211,7 +197,7 @@ namespace lfs::vis::gui {
 
         {
             std::lock_guard poll_lock(poll_mutex_);
-            poll_cache_[snap.idname] = {result, gen, has_sel, training, snap.poll_deps};
+            poll_cache_[snap.id] = {result, gen, has_sel, training, snap.poll_dependencies};
         }
         return result;
     }
@@ -231,10 +217,10 @@ namespace lfs::vis::gui {
             snapshots.reserve(panels_.size());
             for (size_t i = 0; i < panels_.size(); ++i) {
                 auto& p = panels_[i];
-                if (p.space == space && p.enabled && !p.error_disabled && p.parent_idname.empty()) {
-                    snapshots.push_back({i, p.panel.get(), p.label, p.idname,
-                                         p.parent_idname, p.options, p.is_native,
-                                         p.poll_deps, p.initial_width, p.initial_height,
+                if (p.space == space && p.enabled && !p.error_disabled && p.parent_id.empty()) {
+                    snapshots.push_back({i, p.panel.get(), p.label, p.id,
+                                         p.parent_id, p.options, p.is_native,
+                                         p.poll_dependencies, p.initial_width, p.initial_height,
                                          p.float_x, p.float_y, p.order, p.float_stack_order});
                 }
             }
@@ -334,7 +320,7 @@ namespace lfs::vis::gui {
             bool has_user_height = false;
             {
                 std::lock_guard lock(mutex_);
-                if (snap.index < panels_.size() && panels_[snap.index].idname == snap.idname &&
+                if (snap.index < panels_.size() && panels_[snap.index].id == snap.id &&
                     panels_[snap.index].float_user_height > 0) {
                     h = panels_[snap.index].float_user_height;
                     has_user_height = true;
@@ -432,7 +418,7 @@ namespace lfs::vis::gui {
                 continue;
 
             try {
-                ImGui::PushID(snap.idname.c_str());
+                ImGui::PushID(snap.id.c_str());
 
                 switch (space) {
                 case PanelSpace::Floating: {
@@ -455,7 +441,7 @@ namespace lfs::vis::gui {
 
                         {
                             std::lock_guard lock(mutex_);
-                            if (snap.index < panels_.size() && panels_[snap.index].idname == snap.idname) {
+                            if (snap.index < panels_.size() && panels_[snap.index].id == snap.id) {
                                 auto& pi = panels_[snap.index];
                                 const bool active_this_panel = pi.float_dragging || pi.float_resizing;
                                 const bool hovered_this_panel =
@@ -549,7 +535,7 @@ namespace lfs::vis::gui {
 
                         {
                             std::lock_guard lock(mutex_);
-                            if (snap.index < panels_.size() && panels_[snap.index].idname == snap.idname) {
+                            if (snap.index < panels_.size() && panels_[snap.index].id == snap.id) {
                                 const auto& pi = panels_[snap.index];
                                 const bool interactive =
                                     pi.float_dragging || pi.float_resizing ||
@@ -603,9 +589,9 @@ namespace lfs::vis::gui {
                     } else {
                         LOG_ERROR("Panel '{}' ({}) reached floating draw without direct rendering. "
                                   "Disabling the invalid panel instance.",
-                                  snap.label, snap.idname);
+                                  snap.label, snap.id);
                         std::lock_guard lock(mutex_);
-                        if (snap.index < panels_.size() && panels_[snap.index].idname == snap.idname)
+                        if (snap.index < panels_.size() && panels_[snap.index].id == snap.id)
                             panels_[snap.index].error_disabled = true;
                     }
                     break;
@@ -625,16 +611,6 @@ namespace lfs::vis::gui {
                 case PanelSpace::SceneHeader:
                     snap.panel->draw(ctx);
                     break;
-
-                case PanelSpace::Dockable: {
-                    LOG_ERROR("Panel '{}' ({}) is still registered in the retired dockable space. "
-                              "Disabling the invalid panel instance.",
-                              snap.label, snap.idname);
-                    std::lock_guard lock(mutex_);
-                    if (snap.index < panels_.size() && panels_[snap.index].idname == snap.idname)
-                        panels_[snap.index].error_disabled = true;
-                    break;
-                }
                 case PanelSpace::StatusBar:
                     with_panel_input(snap.panel, [&] { snap.panel->draw(ctx); });
                     break;
@@ -659,10 +635,10 @@ namespace lfs::vis::gui {
             std::lock_guard lock(mutex_);
             for (size_t i = 0; i < panels_.size(); ++i) {
                 auto& p = panels_[i];
-                if (p.space == space && p.enabled && !p.error_disabled && p.parent_idname.empty()) {
-                    snapshots.push_back({i, p.panel.get(), p.label, p.idname,
-                                         p.parent_idname, p.options, p.is_native,
-                                         p.poll_deps, p.initial_width, p.initial_height,
+                if (p.space == space && p.enabled && !p.error_disabled && p.parent_id.empty()) {
+                    snapshots.push_back({i, p.panel.get(), p.label, p.id,
+                                         p.parent_id, p.options, p.is_native,
+                                         p.poll_dependencies, p.initial_width, p.initial_height,
                                          p.float_x, p.float_y, p.order, p.float_stack_order});
                 }
             }
@@ -692,7 +668,7 @@ namespace lfs::vis::gui {
         std::lock_guard lock(mutex_);
         for (const auto& panel : panels_) {
             if (panel.space != PanelSpace::Floating || !panel.enabled || panel.error_disabled ||
-                !panel.parent_idname.empty() || !panel.float_last_bounds_valid) {
+                !panel.parent_id.empty() || !panel.float_last_bounds_valid) {
                 continue;
             }
 
@@ -733,10 +709,10 @@ namespace lfs::vis::gui {
             std::lock_guard lock(mutex_);
             for (size_t i = 0; i < panels_.size(); ++i) {
                 auto& p = panels_[i];
-                if (p.space == space && p.enabled && !p.error_disabled && p.parent_idname.empty()) {
-                    snapshots.push_back({i, p.panel.get(), p.label, p.idname,
-                                         p.parent_idname, p.options, p.is_native,
-                                         p.poll_deps, p.initial_width, p.initial_height,
+                if (p.space == space && p.enabled && !p.error_disabled && p.parent_id.empty()) {
+                    snapshots.push_back({i, p.panel.get(), p.label, p.id,
+                                         p.parent_id, p.options, p.is_native,
+                                         p.poll_dependencies, p.initial_width, p.initial_height,
                                          p.float_x, p.float_y});
                 }
             }
@@ -782,10 +758,10 @@ namespace lfs::vis::gui {
             std::lock_guard lock(mutex_);
             for (size_t i = 0; i < panels_.size(); ++i) {
                 auto& p = panels_[i];
-                if (p.space == space && p.enabled && !p.error_disabled && p.parent_idname.empty()) {
-                    snapshots.push_back({i, p.panel.get(), p.label, p.idname,
-                                         p.parent_idname, p.options, p.is_native,
-                                         p.poll_deps, p.initial_width, p.initial_height,
+                if (p.space == space && p.enabled && !p.error_disabled && p.parent_id.empty()) {
+                    snapshots.push_back({i, p.panel.get(), p.label, p.id,
+                                         p.parent_id, p.options, p.is_native,
+                                         p.poll_dependencies, p.initial_width, p.initial_height,
                                          p.float_x, p.float_y});
                 }
             }
@@ -823,18 +799,18 @@ namespace lfs::vis::gui {
         }
     }
 
-    void PanelRegistry::draw_single_panel(const std::string& idname, const PanelDrawContext& ctx) {
+    void PanelRegistry::draw_single_panel(const std::string& id, const PanelDrawContext& ctx) {
         std::shared_ptr<IPanel> panel_holder;
         PanelSnapshot snap{};
         bool found = false;
         {
             std::lock_guard lock(mutex_);
             for (size_t i = 0; i < panels_.size(); ++i) {
-                if (panels_[i].idname == idname && panels_[i].enabled && !panels_[i].error_disabled) {
+                if (panels_[i].id == id && panels_[i].enabled && !panels_[i].error_disabled) {
                     panel_holder = panels_[i].panel;
-                    snap = {i, panels_[i].panel.get(), panels_[i].label, panels_[i].idname,
-                            panels_[i].parent_idname, panels_[i].options, panels_[i].is_native,
-                            panels_[i].poll_deps, panels_[i].initial_width, panels_[i].initial_height,
+                    snap = {i, panels_[i].panel.get(), panels_[i].label, panels_[i].id,
+                            panels_[i].parent_id, panels_[i].options, panels_[i].is_native,
+                            panels_[i].poll_dependencies, panels_[i].initial_width, panels_[i].initial_height,
                             panels_[i].float_x, panels_[i].float_y};
                     found = true;
                     break;
@@ -855,7 +831,7 @@ namespace lfs::vis::gui {
 
         bool draw_succeeded = false;
         try {
-            ImGui::PushID(snap.idname.c_str());
+            ImGui::PushID(snap.id.c_str());
             snap.panel->draw(ctx);
             ImGui::PopID();
             draw_succeeded = true;
@@ -868,22 +844,20 @@ namespace lfs::vis::gui {
     }
 
     bool PanelRegistry::has_panels(PanelSpace space) const {
-        space = canonicalizePanelSpace(space);
         std::lock_guard lock(mutex_);
         for (const auto& p : panels_) {
-            if (p.space == space && p.enabled && !p.error_disabled && p.parent_idname.empty())
+            if (p.space == space && p.enabled && !p.error_disabled && p.parent_id.empty())
                 return true;
         }
         return false;
     }
 
     std::vector<PanelSummary> PanelRegistry::get_panels_for_space(PanelSpace space) {
-        space = canonicalizePanelSpace(space);
         std::lock_guard lock(mutex_);
         std::vector<PanelSummary> result;
         for (const auto& p : panels_) {
-            if (p.space == space && p.enabled && !p.error_disabled && p.parent_idname.empty())
-                result.push_back({p.label, p.idname, p.space, p.order, p.enabled});
+            if (p.space == space && p.enabled && !p.error_disabled && p.parent_id.empty())
+                result.push_back({p.label, p.id, p.space, p.order, p.enabled});
         }
         std::stable_sort(result.begin(), result.end(), [](const PanelSummary& a, const PanelSummary& b) {
             if (a.order != b.order)
@@ -893,30 +867,41 @@ namespace lfs::vis::gui {
         return result;
     }
 
-    std::optional<PanelSummary> PanelRegistry::get_panel(const std::string& idname) {
+    std::optional<PanelDetails> PanelRegistry::get_panel(const std::string& id) {
         std::lock_guard lock(mutex_);
         for (const auto& p : panels_) {
-            if (p.idname == idname)
-                return PanelSummary{p.label, p.idname, p.space, p.order, p.enabled};
+            if (p.id == id)
+                return PanelDetails{
+                    p.label,
+                    p.id,
+                    p.parent_id,
+                    p.space,
+                    p.order,
+                    p.enabled,
+                    p.options,
+                    p.poll_dependencies,
+                    p.is_native,
+                    p.initial_width,
+                    p.initial_height,
+                };
         }
         return std::nullopt;
     }
 
     std::vector<std::string> PanelRegistry::get_panel_names(PanelSpace space) const {
-        space = canonicalizePanelSpace(space);
         std::lock_guard lock(mutex_);
         std::vector<std::string> names;
         for (const auto& p : panels_) {
             if (p.space == space)
-                names.push_back(p.idname);
+                names.push_back(p.id);
         }
         return names;
     }
 
-    void PanelRegistry::set_panel_enabled(const std::string& idname, bool enabled) {
+    void PanelRegistry::set_panel_enabled(const std::string& id, bool enabled) {
         std::lock_guard lock(mutex_);
         for (auto& p : panels_) {
-            if (p.idname == idname) {
+            if (p.id == id) {
                 p.enabled = enabled;
                 if (enabled && p.space == PanelSpace::Floating) {
                     p.float_x = NAN;
@@ -936,11 +921,11 @@ namespace lfs::vis::gui {
         }
     }
 
-    void PanelRegistry::set_panel_disabled_override(const std::string& idname) {
+    void PanelRegistry::set_panel_disabled_override(const std::string& id) {
         std::lock_guard lock(mutex_);
-        disabled_overrides_.insert(idname);
+        disabled_overrides_.insert(id);
         for (auto& p : panels_) {
-            if (p.idname == idname) {
+            if (p.id == id) {
                 p.enabled = false;
                 p.float_last_bounds_valid = false;
                 guiFocusState().want_capture_mouse = false;
@@ -951,10 +936,10 @@ namespace lfs::vis::gui {
         }
     }
 
-    bool PanelRegistry::is_panel_enabled(const std::string& idname) const {
+    bool PanelRegistry::is_panel_enabled(const std::string& id) const {
         std::lock_guard lock(mutex_);
         for (const auto& p : panels_) {
-            if (p.idname == idname)
+            if (p.id == id)
                 return p.enabled;
         }
         return false;
@@ -971,10 +956,10 @@ namespace lfs::vis::gui {
         return false;
     }
 
-    bool PanelRegistry::set_panel_label(const std::string& idname, const std::string& new_label) {
+    bool PanelRegistry::set_panel_label(const std::string& id, const std::string& new_label) {
         std::lock_guard lock(mutex_);
         for (auto& p : panels_) {
-            if (p.idname == idname) {
+            if (p.id == id) {
                 p.label = new_label;
                 return true;
             }
@@ -982,10 +967,10 @@ namespace lfs::vis::gui {
         return false;
     }
 
-    bool PanelRegistry::set_panel_order(const std::string& idname, int new_order) {
+    bool PanelRegistry::set_panel_order(const std::string& id, int new_order) {
         std::lock_guard lock(mutex_);
         for (auto& p : panels_) {
-            if (p.idname == idname) {
+            if (p.id == id) {
                 p.order = new_order;
                 std::stable_sort(panels_.begin(), panels_.end(), [](const PanelInfo& a, const PanelInfo& b) {
                     if (a.order != b.order)
@@ -998,11 +983,10 @@ namespace lfs::vis::gui {
         return false;
     }
 
-    bool PanelRegistry::set_panel_space(const std::string& idname, PanelSpace new_space) {
+    bool PanelRegistry::set_panel_space(const std::string& id, PanelSpace new_space) {
         std::lock_guard lock(mutex_);
-        new_space = canonicalizePanelSpace(new_space);
         for (auto& p : panels_) {
-            if (p.idname == idname) {
+            if (p.id == id) {
                 if (!validatePanelContract(p, new_space))
                     return false;
                 p.space = new_space;
@@ -1013,45 +997,45 @@ namespace lfs::vis::gui {
         return false;
     }
 
-    bool PanelRegistry::set_panel_parent(const std::string& idname, const std::string& parent_idname) {
+    bool PanelRegistry::set_panel_parent(const std::string& id, const std::string& parent_id) {
         std::lock_guard lock(mutex_);
 
-        if (!parent_idname.empty()) {
+        if (!parent_id.empty()) {
             bool parent_found = false;
             for (const auto& p : panels_) {
-                if (p.idname == parent_idname) {
+                if (p.id == parent_id) {
                     parent_found = true;
                     break;
                 }
             }
             if (!parent_found)
-                LOG_WARN("Panel '{}': parent '{}' not registered (may register later)", idname, parent_idname);
+                LOG_WARN("Panel '{}': parent '{}' not registered (may register later)", id, parent_id);
         }
 
         for (auto& p : panels_) {
-            if (p.idname == idname) {
+            if (p.id == id) {
                 PanelInfo candidate = p;
-                candidate.parent_idname = parent_idname;
+                candidate.parent_id = parent_id;
                 if (!validatePanelContract(candidate, candidate.space))
                     return false;
-                p.parent_idname = parent_idname;
+                p.parent_id = parent_id;
                 return true;
             }
         }
         return false;
     }
 
-    void PanelRegistry::draw_child_panels(const std::string& parent_idname, const PanelDrawContext& ctx) {
+    void PanelRegistry::draw_child_panels(const std::string& parent_id, const PanelDrawContext& ctx) {
         std::vector<PanelSnapshot> snapshots;
         {
             std::lock_guard lock(mutex_);
             snapshots.reserve(panels_.size());
             for (size_t i = 0; i < panels_.size(); ++i) {
                 auto& p = panels_[i];
-                if (p.parent_idname == parent_idname && p.enabled && !p.error_disabled) {
-                    snapshots.push_back({i, p.panel.get(), p.label, p.idname,
-                                         p.parent_idname, p.options, p.is_native,
-                                         p.poll_deps, p.initial_width, p.initial_height,
+                if (p.parent_id == parent_id && p.enabled && !p.error_disabled) {
+                    snapshots.push_back({i, p.panel.get(), p.label, p.id,
+                                         p.parent_id, p.options, p.is_native,
+                                         p.poll_dependencies, p.initial_width, p.initial_height,
                                          p.float_x, p.float_y});
                 }
             }
@@ -1068,7 +1052,7 @@ namespace lfs::vis::gui {
             }
 
             try {
-                ImGui::PushID(snap.idname.c_str());
+                ImGui::PushID(snap.id.c_str());
 
                 if (snap.has_option(PanelOption::HIDE_HEADER)) {
                     snap.panel->draw(ctx);
@@ -1092,7 +1076,7 @@ namespace lfs::vis::gui {
         }
     }
 
-    float PanelRegistry::draw_single_panel_direct(const std::string& idname, float x, float y,
+    float PanelRegistry::draw_single_panel_direct(const std::string& id, float x, float y,
                                                   float w, float h, const PanelDrawContext& ctx,
                                                   float clip_y_min, float clip_y_max,
                                                   const PanelInputState* input) {
@@ -1102,11 +1086,11 @@ namespace lfs::vis::gui {
         {
             std::lock_guard lock(mutex_);
             for (size_t i = 0; i < panels_.size(); ++i) {
-                if (panels_[i].idname == idname && panels_[i].enabled && !panels_[i].error_disabled) {
+                if (panels_[i].id == id && panels_[i].enabled && !panels_[i].error_disabled) {
                     panel_holder = panels_[i].panel;
-                    snap = {i, panels_[i].panel.get(), panels_[i].label, panels_[i].idname,
-                            panels_[i].parent_idname, panels_[i].options, panels_[i].is_native,
-                            panels_[i].poll_deps, panels_[i].initial_width, panels_[i].initial_height,
+                    snap = {i, panels_[i].panel.get(), panels_[i].label, panels_[i].id,
+                            panels_[i].parent_id, panels_[i].options, panels_[i].is_native,
+                            panels_[i].poll_dependencies, panels_[i].initial_width, panels_[i].initial_height,
                             panels_[i].float_x, panels_[i].float_y};
                     found = true;
                     break;
@@ -1142,7 +1126,7 @@ namespace lfs::vis::gui {
         return used > 0 ? used : 0.0f;
     }
 
-    float PanelRegistry::preload_single_panel_direct(const std::string& idname, float w, float h,
+    float PanelRegistry::preload_single_panel_direct(const std::string& id, float w, float h,
                                                      const PanelDrawContext& ctx,
                                                      float clip_y_min, float clip_y_max,
                                                      const PanelInputState* input) {
@@ -1152,11 +1136,11 @@ namespace lfs::vis::gui {
         {
             std::lock_guard lock(mutex_);
             for (size_t i = 0; i < panels_.size(); ++i) {
-                if (panels_[i].idname == idname && panels_[i].enabled && !panels_[i].error_disabled) {
+                if (panels_[i].id == id && panels_[i].enabled && !panels_[i].error_disabled) {
                     panel_holder = panels_[i].panel;
-                    snap = {i, panels_[i].panel.get(), panels_[i].label, panels_[i].idname,
-                            panels_[i].parent_idname, panels_[i].options, panels_[i].is_native,
-                            panels_[i].poll_deps, panels_[i].initial_width, panels_[i].initial_height,
+                    snap = {i, panels_[i].panel.get(), panels_[i].label, panels_[i].id,
+                            panels_[i].parent_id, panels_[i].options, panels_[i].is_native,
+                            panels_[i].poll_dependencies, panels_[i].initial_width, panels_[i].initial_height,
                             panels_[i].float_x, panels_[i].float_y};
                     found = true;
                     break;
@@ -1192,7 +1176,7 @@ namespace lfs::vis::gui {
         return used > 0.0f ? used : 0.0f;
     }
 
-    float PanelRegistry::preload_child_panels_direct(const std::string& parent_idname, float w, float h,
+    float PanelRegistry::preload_child_panels_direct(const std::string& parent_id, float w, float h,
                                                      const PanelDrawContext& ctx,
                                                      float clip_y_min, float clip_y_max,
                                                      const PanelInputState* input) {
@@ -1202,10 +1186,10 @@ namespace lfs::vis::gui {
             snapshots.reserve(panels_.size());
             for (size_t i = 0; i < panels_.size(); ++i) {
                 auto& p = panels_[i];
-                if (p.parent_idname == parent_idname && p.enabled && !p.error_disabled) {
-                    snapshots.push_back({i, p.panel.get(), p.label, p.idname,
-                                         p.parent_idname, p.options, p.is_native,
-                                         p.poll_deps, p.initial_width, p.initial_height,
+                if (p.parent_id == parent_id && p.enabled && !p.error_disabled) {
+                    snapshots.push_back({i, p.panel.get(), p.label, p.id,
+                                         p.parent_id, p.options, p.is_native,
+                                         p.poll_dependencies, p.initial_width, p.initial_height,
                                          p.float_x, p.float_y});
                 }
             }
@@ -1245,7 +1229,7 @@ namespace lfs::vis::gui {
         return y_offset;
     }
 
-    float PanelRegistry::draw_child_panels_direct(const std::string& parent_idname, float x, float y,
+    float PanelRegistry::draw_child_panels_direct(const std::string& parent_id, float x, float y,
                                                   float w, float h, const PanelDrawContext& ctx,
                                                   float clip_y_min, float clip_y_max,
                                                   const PanelInputState* input) {
@@ -1255,10 +1239,10 @@ namespace lfs::vis::gui {
             snapshots.reserve(panels_.size());
             for (size_t i = 0; i < panels_.size(); ++i) {
                 auto& p = panels_[i];
-                if (p.parent_idname == parent_idname && p.enabled && !p.error_disabled) {
-                    snapshots.push_back({i, p.panel.get(), p.label, p.idname,
-                                         p.parent_idname, p.options, p.is_native,
-                                         p.poll_deps, p.initial_width, p.initial_height,
+                if (p.parent_id == parent_id && p.enabled && !p.error_disabled) {
+                    snapshots.push_back({i, p.panel.get(), p.label, p.id,
+                                         p.parent_id, p.options, p.is_native,
+                                         p.poll_dependencies, p.initial_width, p.initial_height,
                                          p.float_x, p.float_y});
                 }
             }
@@ -1301,7 +1285,7 @@ namespace lfs::vis::gui {
         if (snap.is_native)
             return;
         std::lock_guard lock(mutex_);
-        if (snap.index >= panels_.size() || panels_[snap.index].idname != snap.idname)
+        if (snap.index >= panels_.size() || panels_[snap.index].id != snap.id)
             return;
         if (!draw_succeeded) {
             panels_[snap.index].consecutive_errors++;
@@ -1322,7 +1306,7 @@ namespace lfs::vis::gui {
             return;
         }
         std::erase_if(poll_cache_, [&](const auto& pair) {
-            return (pair.second.deps & changed) != PollDependency::NONE;
+            return (pair.second.poll_dependencies & changed) != PollDependency::NONE;
         });
     }
 

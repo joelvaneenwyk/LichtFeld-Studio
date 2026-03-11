@@ -154,7 +154,7 @@ class TestExamplesImports:
         ids=[p.stem for p in EXAMPLE_FILES],
     )
     def test_no_wrong_import_patterns(self, path):
-        """Must not use lf.ui.Panel, lf.ui.register_panel, or similar wrong patterns."""
+        """Examples must use the canonical panel API and avoid retired helpers."""
         source = path.read_text()
         bad_patterns = [
             "lf.ui.Operator",
@@ -294,7 +294,7 @@ class TestPanelAPI:
 
         class TestPanel(Panel):
             label = "Test"
-            space = "SIDE_PANEL"
+            space = "MAIN_PANEL_TAB"
             order = 10
 
             def draw(self, layout):

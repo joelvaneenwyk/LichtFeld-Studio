@@ -106,9 +106,9 @@ def _can_drag(node_type, parent_is_dataset):
 
 
 class ScenePanel(Panel):
-    idname = "lfs.scene"
+    id = "lfs.scene"
     label = "Scene"
-    space = "SCENE_HEADER"
+    space = lf.ui.PanelSpace.SCENE_HEADER
     order = 0
     template = "rmlui/scene_tree.rml"
     update_interval_ms = 16

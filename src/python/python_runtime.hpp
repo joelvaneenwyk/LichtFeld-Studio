@@ -6,6 +6,8 @@
 
 #include "core/mesh2splat.hpp"
 #include "core/modal_request.hpp"
+#include "visualizer/gui/panel_height_mode.hpp"
+#include "visualizer/gui/panel_space.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -49,16 +51,8 @@ namespace lfs::vis {
 
 namespace lfs::python {
 
-    // Panel space types
-    enum class PanelSpace {
-        SidePanel,
-        Floating,
-        ViewportOverlay,
-        Dockable,
-        MainPanelTab, // Main right panel tabs (Rendering, Training, etc.)
-        SceneHeader,  // Scene panel above the tabs
-        StatusBar     // Bottom status bar (22px height)
-    };
+    using PanelSpace = vis::gui::PanelSpace;
+    using PanelHeightMode = vis::gui::PanelHeightMode;
 
     struct PyContext {
         // Managers (set directly)

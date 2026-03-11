@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "gui/panel_height_mode.hpp"
 #include "gui/panel_registry.hpp"
 #include "gui/rmlui/rml_fbo.hpp"
 #include <core/export.hpp>
@@ -25,9 +26,6 @@ namespace lfs::vis {
 namespace lfs::vis::gui {
 
     class RmlUIManager;
-
-    enum class HeightMode { Fill,
-                            Content };
 
     class LFS_VIS_API RmlPanelHost {
     public:
@@ -59,8 +57,8 @@ namespace lfs::vis::gui {
         static void clearQueuedForegroundComposites();
         static void flushQueuedForegroundComposites(int screen_w, int screen_h);
 
-        void setHeightMode(HeightMode mode) { height_mode_ = mode; }
-        HeightMode getHeightMode() const { return height_mode_; }
+        void setHeightMode(PanelHeightMode mode) { height_mode_ = mode; }
+        PanelHeightMode getHeightMode() const { return height_mode_; }
         float getContentHeight() const { return last_content_height_; }
         void setForcedHeight(float h) { forced_height_ = h; }
         void markContentDirty() { content_dirty_ = true; }
@@ -127,7 +125,7 @@ namespace lfs::vis::gui {
         Rml::Element* content_el_ = nullptr;
         Rml::Element* scroll_el_ = nullptr;
 
-        HeightMode height_mode_ = HeightMode::Fill;
+        PanelHeightMode height_mode_ = PanelHeightMode::Fill;
         float forced_height_ = 0.0f;
         float last_content_height_ = 0.0f;
         float last_content_el_height_ = 0.0f;

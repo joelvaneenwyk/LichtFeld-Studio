@@ -11,7 +11,7 @@ class GridEnumSettings:
 
 class GridEnumPanel(lf.ui.Panel):
     label = "Grid & Enum Demo"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 301
 
     def __init__(self):

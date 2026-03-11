@@ -36,12 +36,12 @@ def _download_thumbnail(video_id, on_done):
 class GettingStartedPanel(Panel):
     """Floating panel displaying tutorial videos and documentation."""
 
-    idname = "lfs.getting_started"
+    id = "lfs.getting_started"
     label = "Getting Started"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 99
     template = "rmlui/getting_started.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     size = (560, 0)
     update_interval_ms = 100
 

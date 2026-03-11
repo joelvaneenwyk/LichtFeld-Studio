@@ -9,12 +9,12 @@ from .types import Panel
 class AboutPanel(Panel):
     """Floating panel displaying application information."""
 
-    idname = "lfs.about"
+    id = "lfs.about"
     label = "About"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 100
     template = "rmlui/about.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     size = (400, 0)
 
     def on_bind_model(self, ctx):

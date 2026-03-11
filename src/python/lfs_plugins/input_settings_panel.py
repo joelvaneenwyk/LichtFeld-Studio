@@ -7,14 +7,14 @@ from .types import Panel
 
 
 class InputSettingsPanel(Panel):
-    idname = "lfs.input_settings"
+    id = "lfs.input_settings"
     label = "Input Settings"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 100
     template = "rmlui/input_settings.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     size = (500, 0)
-    options = {"DEFAULT_CLOSED"}
+    options = {lf.ui.PanelOption.DEFAULT_CLOSED}
     update_interval_ms = 50
 
     TOOL_MODES = [

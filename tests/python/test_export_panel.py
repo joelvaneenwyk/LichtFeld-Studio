@@ -16,6 +16,16 @@ def _make_node(node_type, name, gaussian_count):
 
 
 def _install_lf_stub(monkeypatch):
+    panel_space = SimpleNamespace(
+        SIDE_PANEL="SIDE_PANEL",
+        FLOATING="FLOATING",
+        VIEWPORT_OVERLAY="VIEWPORT_OVERLAY",
+        MAIN_PANEL_TAB="MAIN_PANEL_TAB",
+        SCENE_HEADER="SCENE_HEADER",
+        STATUS_BAR="STATUS_BAR",
+    )
+    panel_height_mode = SimpleNamespace(FILL="fill", CONTENT="content")
+    panel_option = SimpleNamespace(DEFAULT_CLOSED="DEFAULT_CLOSED", HIDE_HEADER="HIDE_HEADER")
     node_type = IntEnum("NodeType", {"SPLAT": 1, "MESH": 2})
     state = SimpleNamespace(
         language=["en"],
@@ -29,6 +39,9 @@ def _install_lf_stub(monkeypatch):
     lf_stub = ModuleType("lichtfeld")
     lf_stub.scene = SimpleNamespace(NodeType=node_type)
     lf_stub.ui = SimpleNamespace(
+        PanelSpace=panel_space,
+        PanelHeightMode=panel_height_mode,
+        PanelOption=panel_option,
         tr=lambda key: key,
         get_current_language=lambda: state.language[0],
         get_export_state=lambda: dict(state.export_state),

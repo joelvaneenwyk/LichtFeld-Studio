@@ -27,7 +27,7 @@ namespace lfs::vis::gui {
     class RmlUIManager;
 
     struct TabSnapshot {
-        std::string idname;
+        std::string id;
         std::string label;
         std::string dom_id;
         std::string nav_left;

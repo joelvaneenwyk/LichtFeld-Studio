@@ -27,9 +27,9 @@ _instance = None
 
 
 class ImagePreviewPanel(Panel):
-    idname = "lfs.image_preview"
+    id = "lfs.image_preview"
     label = "Image Preview"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 98
     template = "rmlui/image_preview.rml"
     size = (900, 600)

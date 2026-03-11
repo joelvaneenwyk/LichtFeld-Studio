@@ -11,13 +11,13 @@ from .types import Panel
 class ScriptsPanel(Panel):
     """Floating window for managing loaded Python scripts."""
 
-    idname = "lfs.scripts"
+    id = "lfs.scripts"
     label = "Python Scripts"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 200
-    options = {"DEFAULT_CLOSED"}
+    options = {lf.ui.PanelOption.DEFAULT_CLOSED}
     template = "rmlui/scripts_panel.rml"
-    height_mode = "content"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     size = (520, 0)
     update_interval_ms = 200
 

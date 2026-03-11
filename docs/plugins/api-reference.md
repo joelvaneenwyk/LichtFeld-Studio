@@ -24,17 +24,17 @@ import lichtfeld as lf
 
 | Attribute | Type | Default | Description |
 |---|---|---|---|
-| `idname` | `str` | `module.qualname` | Unique panel identifier |
-| `label` | `str` | `""` | Display name (`idname` fallback when empty) |
-| `space` | `str` | `"MAIN_PANEL_TAB"` | Panel space (see below) |
-| `parent` | `str` | `""` | Parent tab idname. Embeds as collapsible section and overrides `space` |
+| `id` | `str` | `module.qualname` | Unique panel identifier |
+| `label` | `str` | `""` | Display name (`id` fallback when empty) |
+| `space` | `lf.ui.PanelSpace` | `lf.ui.PanelSpace.MAIN_PANEL_TAB` | Panel space (see below) |
+| `parent` | `str` | `""` | Parent panel id. Embeds as a collapsible section; embedded panels must not override `space` |
 | `order` | `int` | `100` | Sort order (lower = higher) |
-| `options` | `Set[str]` | `set()` | `"DEFAULT_CLOSED"`, `"HIDE_HEADER"` |
-| `poll_deps` | `Set[str]` | `{"SCENE","SELECTION","TRAINING"}` | Which state changes trigger `poll()` |
+| `options` | `set[lf.ui.PanelOption]` | `set()` | `DEFAULT_CLOSED`, `HIDE_HEADER` |
+| `poll_dependencies` | `set[lf.ui.PollDependency]` | `{SCENE, SELECTION, TRAINING}` | Which state changes trigger `poll()` |
 | `size` | `tuple[float, float] \| None` | `None` | Initial width/height hint, mainly for floating panels |
-| `template` | `str` | `""` | Retained RML template. Use an absolute path for plugin-local files |
+| `template` | `str \| os.PathLike[str]` | `""` | Retained RML template. Use an absolute path for plugin-local files |
 | `style` | `str` | `""` | Inline RCSS appended to the retained document |
-| `height_mode` | `str` | `"fill"` | `"fill"` or `"content"` for retained panels |
+| `height_mode` | `lf.ui.PanelHeightMode` | `lf.ui.PanelHeightMode.FILL` | `FILL` or `CONTENT` for retained panels |
 | `update_interval_ms` | `int` | `100` | Cadence for retained/hybrid `on_update()` work |
 
 | Method | Returns | Description |
@@ -47,19 +47,23 @@ import lichtfeld as lf
 | `on_update(self, doc)` | `None \| bool` | Periodic retained update. Return `True` to mark content dirty |
 | `on_scene_changed(self, doc)` | `None` | Called when the active scene generation changes |
 
-Registering a panel with the same `idname` as an existing panel replaces it (see [Panel replacement](getting-started.md#panel-replacement)).
+Registering a panel with the same `id` as an existing panel replaces it (see [Panel replacement](getting-started.md#panel-replacement)).
 
 `lf.ui.Panel` is unified: a panel can start as `draw(ui)` only and later add `template`, `style`, `height_mode`, or retained hooks without switching base classes or rewriting the panel body.
 
+Panel definitions are validated during `lf.register_class()`. Invalid enum values, removed legacy field names, unsupported retained features on `VIEWPORT_OVERLAY`, or conflicting embedded-panel fields raise `ValueError`, `TypeError`, or `AttributeError`.
+
+The panel API is strict in v1: use the enum values above, not string literals.
+
 ### Panel spaces
 
-`MAIN_PANEL_TAB`, `SIDE_PANEL`, `VIEWPORT_OVERLAY`, `SCENE_HEADER`, `FLOATING`, `DOCKABLE` (alias of `FLOATING`), `STATUS_BAR`
+`MAIN_PANEL_TAB`, `SIDE_PANEL`, `VIEWPORT_OVERLAY`, `SCENE_HEADER`, `FLOATING`, `STATUS_BAR`
 
 ### Retained shell behavior
 
 If a panel uses retained features and `template` is empty, LichtFeld selects a shell automatically:
 
-- `FLOATING` and `DOCKABLE` -> `rmlui/floating_window.rml`
+- `FLOATING` -> `rmlui/floating_window.rml`
 - `STATUS_BAR` -> `rmlui/status_bar_panel.rml`
 - Other retained panel spaces -> `rmlui/docked_panel.rml`
 
@@ -1293,14 +1297,15 @@ lf.undo.push(name: str, undo: Callable, redo: Callable, validate: Callable | Non
 | `lf.ui.get_languages()`                     | `list[tuple[str, str]]` | Available languages  |
 | `lf.ui.set_theme(name)`                     | `None`           | Theme switch (`dark`/`light`) |
 | `lf.ui.get_theme()`                         | `str`            | Active theme name          |
-| `lf.ui.set_panel_enabled(idname, enabled)`  | `None`           | Toggle panel by idname     |
-| `lf.ui.is_panel_enabled(idname)`            | `bool`           | Panel enabled state        |
-| `lf.ui.get_panel_names(space='FLOATING')`   | `list[str]`      | Panel idnames for a space  |
-| `lf.ui.get_panel(idname)`                   | `dict or None`   | Panel info (`idname`, `label`, `order`, `enabled`, `space`) |
-| `lf.ui.set_panel_label(idname, label)`      | `bool`           | Change panel display name  |
-| `lf.ui.set_panel_order(idname, order)`      | `bool`           | Change panel sort order    |
-| `lf.ui.set_panel_space(idname, space)`      | `bool`           | Move panel to a different space |
-| `lf.ui.set_panel_parent(idname, parent)`    | `bool`           | Embed panel inside a tab as collapsible section |
+| `lf.ui.set_panel_enabled(panel_id, enabled)`  | `None`           | Toggle panel by id         |
+| `lf.ui.is_panel_enabled(panel_id)`            | `bool`           | Panel enabled state        |
+| `lf.ui.get_panel_names(space=lf.ui.PanelSpace.FLOATING)` | `list[str]` | Panel ids for a space |
+| `lf.ui.get_panel(panel_id)`                   | `lf.ui.PanelInfo \| None`   | Typed panel info |
+| `lf.ui.get_main_panel_tabs()`                 | `list[lf.ui.PanelSummary]` | Typed summaries for main-panel tabs |
+| `lf.ui.set_panel_label(panel_id, label)`      | `bool`           | Change panel display name  |
+| `lf.ui.set_panel_order(panel_id, order)`      | `bool`           | Change panel sort order    |
+| `lf.ui.set_panel_space(panel_id, space)`      | `bool`           | Move panel to a different space (`lf.ui.PanelSpace`) |
+| `lf.ui.set_panel_parent(panel_id, parent)`    | `bool`           | Embed panel inside a tab as collapsible section |
 | `lf.ui.ops.invoke(op_id, **kwargs)`         | `OperatorReturnValue` | Invoke operator       |
 | `lf.ui.ops.poll(op_id)`                     | `bool`           | Operator poll              |
 | `lf.ui.ops.cancel_modal()`                  | `None`           | Cancel modal operator      |
