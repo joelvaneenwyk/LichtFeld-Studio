@@ -31,6 +31,7 @@ else()
 endif()
 
 # nvImageCodec - GPU-accelerated image codec library
+find_package(Boost REQUIRED)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/nvImageCodec/CMakeLists.txt")
     message(STATUS "Adding nvImageCodec")
     if(DEFINED DETECTED_COMPUTE_CAP)
