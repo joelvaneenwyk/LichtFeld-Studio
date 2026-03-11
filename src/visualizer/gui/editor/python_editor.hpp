@@ -42,6 +42,9 @@ namespace lfs::vis::editor {
         void focus();
         void unfocus();
         bool isFocused() const;
+        bool hasActiveCompletion() const;
+        void setVimModeEnabled(bool enabled);
+        bool isVimModeEnabled() const;
 
         void setReadOnly(bool readonly);
         bool isReadOnly() const;

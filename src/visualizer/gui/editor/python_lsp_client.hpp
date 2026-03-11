@@ -42,6 +42,19 @@ namespace lfs::vis::editor {
             std::vector<CompletionItem> items;
         };
 
+        struct SemanticToken {
+            int line = 0;
+            int start_character = 0;
+            int length = 0;
+            std::string type;
+            uint32_t modifiers = 0;
+        };
+
+        struct SemanticTokenList {
+            int document_version = 0;
+            std::vector<SemanticToken> tokens;
+        };
+
         PythonLspClient();
         ~PythonLspClient();
 
@@ -49,8 +62,14 @@ namespace lfs::vis::editor {
         PythonLspClient& operator=(const PythonLspClient&) = delete;
 
         int updateDocument(const std::string& text);
-        void requestCompletion(int document_version, int line, int character, bool manual);
+        void requestCompletion(int document_version,
+                               int line,
+                               int character,
+                               bool manual,
+                               std::string trigger_character = {});
+        void requestSemanticTokens(int document_version);
         std::optional<CompletionList> takeLatestCompletion();
+        std::optional<SemanticTokenList> takeLatestSemanticTokens();
 
         [[nodiscard]] bool isReady() const;
         [[nodiscard]] bool isAvailable() const;

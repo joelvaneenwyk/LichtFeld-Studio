@@ -43,12 +43,12 @@ namespace lfs::vis::editor {
         HANDLE stdout_read_ = INVALID_HANDLE_VALUE;
         HANDLE stderr_read_ = INVALID_HANDLE_VALUE;
 #else
-        pid_t pid_ = -1;
+        mutable pid_t pid_ = -1;
         int stdin_fd_ = -1;
         int stdout_fd_ = -1;
         int stderr_fd_ = -1;
 #endif
-        int exit_code_ = -1;
+        mutable int exit_code_ = -1;
     };
 
 } // namespace lfs::vis::editor

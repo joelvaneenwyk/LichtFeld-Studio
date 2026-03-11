@@ -50,6 +50,75 @@ ZepSyntax_Python::ZepSyntax_Python(ZepBuffer& buffer,
     uint32_t flags)
     : ZepSyntax(buffer, keywords, identifiers, flags)
 {
+    semantic_cells_.resize(m_buffer.GetWorkingBuffer().size());
+}
+
+SyntaxResult ZepSyntax_Python::GetSyntaxAt(const GlyphIterator& index) const
+{
+    auto result = ZepSyntax::GetSyntaxAt(index);
+    if (index.Index() < 0 || static_cast<size_t>(index.Index()) >= semantic_cells_.size()) {
+        return result;
+    }
+
+    const auto& cell = semantic_cells_[static_cast<size_t>(index.Index())];
+    if (!cell.active) {
+        return result;
+    }
+
+    result.foreground = cell.custom_foreground ? ThemeColor::Custom : cell.foreground;
+    result.customForegroundColor = cell.custom_foreground_color;
+    result.underline = result.underline || cell.underline;
+    return result;
+}
+
+void ZepSyntax_Python::Notify(std::shared_ptr<ZepMessage> message)
+{
+    ZepSyntax::Notify(message);
+
+    if (message->messageId != Msg::Buffer) {
+        return;
+    }
+
+    auto buffer_message = std::static_pointer_cast<BufferMessage>(message);
+    if (buffer_message->pBuffer != &m_buffer) {
+        return;
+    }
+
+    const auto clamp_index = [&](long index) {
+        return std::clamp(index, 0l, static_cast<long>(semantic_cells_.size()));
+    };
+
+    switch (buffer_message->type) {
+    case BufferMessageType::TextAdded: {
+        const auto start = clamp_index(buffer_message->startLocation.Index());
+        const auto count = std::max(0l,
+                                    buffer_message->endLocation.Index() -
+                                        buffer_message->startLocation.Index());
+        semantic_cells_.insert(semantic_cells_.begin() + start,
+                               static_cast<size_t>(count),
+                               SemanticCell{});
+        break;
+    }
+    case BufferMessageType::TextDeleted: {
+        const auto start = clamp_index(buffer_message->startLocation.Index());
+        const auto end = std::max(start, clamp_index(buffer_message->endLocation.Index()));
+        semantic_cells_.erase(semantic_cells_.begin() + start,
+                              semantic_cells_.begin() + end);
+        break;
+    }
+    case BufferMessageType::TextChanged: {
+        const auto start = clamp_index(buffer_message->startLocation.Index());
+        const auto end = std::max(start, clamp_index(buffer_message->endLocation.Index()));
+        std::fill(semantic_cells_.begin() + start, semantic_cells_.begin() + end,
+                  SemanticCell{});
+        break;
+    }
+    case BufferMessageType::Loaded:
+        semantic_cells_.assign(m_buffer.GetWorkingBuffer().size(), SemanticCell{});
+        break;
+    default:
+        break;
+    }
 }
 
 void ZepSyntax_Python::UpdateSyntax()
@@ -237,6 +306,64 @@ void ZepSyntax_Python::UpdateSyntax()
 
     m_targetChar = 0;
     m_processedChar = buffer.size() == 0 ? 0 : long(buffer.size() - 1);
+}
+
+void ZepSyntax_Python::ClearSemanticHighlighting()
+{
+    semantic_cells_.assign(m_buffer.GetWorkingBuffer().size(), SemanticCell{});
+    GetEditor().RequestRefresh();
+}
+
+void ZepSyntax_Python::ReplaceSemanticHighlighting(
+    long start,
+    long end,
+    const std::vector<ZepSemanticHighlight>& highlights)
+{
+    if (semantic_cells_.size() != m_buffer.GetWorkingBuffer().size()) {
+        semantic_cells_.assign(m_buffer.GetWorkingBuffer().size(), SemanticCell{});
+    }
+
+    const size_t clamped_start =
+        static_cast<size_t>(std::clamp(start, 0l, static_cast<long>(semantic_cells_.size())));
+    const size_t clamped_end =
+        static_cast<size_t>(std::clamp(end, 0l, static_cast<long>(semantic_cells_.size())));
+    if (clamped_start > clamped_end) {
+        return;
+    }
+
+    std::fill(semantic_cells_.begin() + clamped_start, semantic_cells_.begin() + clamped_end,
+              SemanticCell{});
+
+    for (const auto& highlight : highlights) {
+        if (highlight.end <= highlight.start || highlight.start < 0) {
+            continue;
+        }
+
+        const size_t highlight_start =
+            std::max(clamped_start, static_cast<size_t>(highlight.start));
+        const size_t highlight_end = std::min(
+            clamped_end, std::min(static_cast<size_t>(highlight.end), semantic_cells_.size()));
+        if (highlight_start >= highlight_end) {
+            continue;
+        }
+
+        for (size_t index = highlight_start; index < highlight_end; ++index) {
+            auto& cell = semantic_cells_[index];
+            cell.foreground = highlight.foreground;
+            cell.custom_foreground = highlight.custom_foreground;
+            cell.custom_foreground_color = highlight.custom_foreground_color;
+            cell.underline = highlight.underline;
+            cell.active = true;
+        }
+    }
+
+    GetEditor().RequestRefresh();
+}
+
+void ZepSyntax_Python::SetSemanticHighlighting(const std::vector<ZepSemanticHighlight>& highlights)
+{
+    semantic_cells_.assign(m_buffer.GetWorkingBuffer().size(), SemanticCell{});
+    ReplaceSemanticHighlighting(0, static_cast<long>(semantic_cells_.size()), highlights);
 }
 
 } // namespace Zep

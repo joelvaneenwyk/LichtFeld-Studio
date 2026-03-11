@@ -262,11 +262,11 @@ namespace lfs::vis::editor {
 
         if (result == pid_) {
             if (WIFEXITED(status)) {
-                const_cast<StdioProcess*>(this)->exit_code_ = WEXITSTATUS(status);
+                exit_code_ = WEXITSTATUS(status);
             } else if (WIFSIGNALED(status)) {
-                const_cast<StdioProcess*>(this)->exit_code_ = 128 + WTERMSIG(status);
+                exit_code_ = 128 + WTERMSIG(status);
             }
-            const_cast<StdioProcess*>(this)->pid_ = -1;
+            pid_ = -1;
         }
 
         return false;
@@ -278,20 +278,23 @@ namespace lfs::vis::editor {
         close_fd(stderr_fd_);
 
         if (pid_ > 0) {
-            ::kill(pid_, SIGTERM);
+            const pid_t child = pid_;
+            pid_ = -1;
+
+            ::kill(child, SIGTERM);
             usleep(50000);
-            if (isRunning()) {
-                ::kill(pid_, SIGKILL);
-            }
 
             int status = 0;
-            waitpid(pid_, &status, 0);
+            if (waitpid(child, &status, WNOHANG) == 0) {
+                ::kill(child, SIGKILL);
+                waitpid(child, &status, 0);
+            }
+
             if (WIFEXITED(status)) {
                 exit_code_ = WEXITSTATUS(status);
             } else if (WIFSIGNALED(status)) {
                 exit_code_ = 128 + WTERMSIG(status);
             }
-            pid_ = -1;
         }
     }
 
@@ -437,7 +440,7 @@ namespace lfs::vis::editor {
             return true;
         }
 
-        const_cast<StdioProcess*>(this)->exit_code_ = static_cast<int>(code);
+        exit_code_ = static_cast<int>(code);
         return false;
     }
 

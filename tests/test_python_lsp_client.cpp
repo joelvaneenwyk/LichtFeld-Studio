@@ -107,7 +107,14 @@ while True:
                 "id": message["id"],
                 "result": {
                     "capabilities": {
-                        "completionProvider": {"triggerCharacters": ["."]}
+                        "completionProvider": {"triggerCharacters": ["."]},
+                        "semanticTokensProvider": {
+                            "legend": {
+                                "tokenTypes": ["namespace", "function", "property"],
+                                "tokenModifiers": ["defaultLibrary"],
+                            },
+                            "full": True,
+                        },
                     }
                 },
             }
@@ -145,6 +152,20 @@ while True:
                 },
             }
         )
+    elif method == "textDocument/semanticTokens/full":
+        send_message(
+            {
+                "jsonrpc": "2.0",
+                "id": message["id"],
+                "result": {
+                    "data": [
+                        0, 7, 9, 0, 0,
+                        1, 11, 9, 1, 0,
+                        1, 14, 19, 2, 0,
+                    ]
+                },
+            }
+        )
 )PY";
         file.close();
 
@@ -161,6 +182,8 @@ TEST(PythonLspClientTest, ReceivesCompletionItemsFromLanguageServer) {
 #else
     const auto script = write_mock_lsp_server();
     ScopedEnvVar server_override("LFS_PYTHON_LSP", script.string());
+    ScopedEnvVar workspace_override("LFS_PYTHON_LSP_WORKSPACE",
+                                    (script.parent_path() / "workspace").string());
 
     lfs::vis::editor::PythonLspClient client;
     const int version = client.updateDocument("lf.get");
@@ -191,5 +214,44 @@ TEST(PythonLspClientTest, ReceivesCompletionItemsFromLanguageServer) {
     ASSERT_EQ(completion->items[0].additional_text_edits.size(), 1u);
     EXPECT_EQ(completion->items[0].additional_text_edits[0].new_text,
               "import lichtfeld as lf\n");
+#endif
+}
+
+TEST(PythonLspClientTest, ReceivesSemanticTokensFromLanguageServer) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Mock LSP server fixture is only implemented on POSIX.";
+#else
+    const auto script = write_mock_lsp_server();
+    ScopedEnvVar server_override("LFS_PYTHON_LSP", script.string());
+    ScopedEnvVar workspace_override("LFS_PYTHON_LSP_WORKSPACE",
+                                    (script.parent_path() / "workspace").string());
+
+    lfs::vis::editor::PythonLspClient client;
+    const int version = client.updateDocument(
+        "import lichtfeld as lf\nscene = lf.get_scene()\ncount = scene.active_camera_count\n");
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (!client.isReady() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    ASSERT_TRUE(client.isReady());
+
+    client.requestSemanticTokens(version);
+
+    std::optional<lfs::vis::editor::PythonLspClient::SemanticTokenList> semantic_tokens;
+    while (std::chrono::steady_clock::now() < deadline) {
+        semantic_tokens = client.takeLatestSemanticTokens();
+        if (semantic_tokens.has_value()) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    ASSERT_TRUE(semantic_tokens.has_value());
+    ASSERT_EQ(semantic_tokens->document_version, version);
+    ASSERT_EQ(semantic_tokens->tokens.size(), 3u);
+    EXPECT_EQ(semantic_tokens->tokens[0].type, "namespace");
+    EXPECT_EQ(semantic_tokens->tokens[1].type, "function");
+    EXPECT_EQ(semantic_tokens->tokens[2].type, "property");
 #endif
 }

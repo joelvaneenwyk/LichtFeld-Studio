@@ -926,7 +926,7 @@ def _lfs_format_code(code):
                 lines[idx] = new_line
                 changed = True
 
-        return (source, changed)
+        return ('\n'.join(lines), changed)
 
     # Normalize unicode characters that break parsing (from copy-paste)
     replacements = {

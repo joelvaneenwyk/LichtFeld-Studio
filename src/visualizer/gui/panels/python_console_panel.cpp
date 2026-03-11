@@ -73,6 +73,38 @@ namespace {
         editor->focus();
     }
 
+    void draw_vim_mode_button(lfs::vis::gui::panels::PythonConsoleState& state,
+                              const lfs::vis::Theme& t) {
+        auto* editor = state.getEditor();
+        const bool enabled = editor && editor->isVimModeEnabled();
+
+        if (enabled) {
+            ImGui::PushStyleColor(ImGuiCol_Button, t.button_selected());
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, t.button_selected_hovered());
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                                  lfs::vis::darken(t.button_selected_hovered(), 0.05f));
+        }
+        if (!editor) {
+            ImGui::BeginDisabled();
+        }
+
+        if (ImGui::Button("Vim") && editor) {
+            editor->setVimModeEnabled(!enabled);
+            editor->focus();
+        }
+
+        if (!editor) {
+            ImGui::EndDisabled();
+        }
+        if (enabled) {
+            ImGui::PopStyleColor(3);
+        }
+
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip(enabled ? "Disable Vim mode" : "Enable Vim mode");
+        }
+    }
+
     void setup_sys_path() {
         std::call_once(g_syspath_init_once, [] {
             const lfs::python::GilAcquire gil;
@@ -587,6 +619,9 @@ namespace lfs::vis::gui::panels {
             }
 
             ImGui::SameLine();
+            draw_vim_mode_button(state, t);
+
+            ImGui::SameLine();
             ImGui::Separator();
             ImGui::SameLine();
 
@@ -609,6 +644,7 @@ namespace lfs::vis::gui::panels {
 
         float top_height = total_height * g_splitter_ratio - SPLITTER_THICKNESS / 2;
         float bottom_height = total_height * (1.0f - g_splitter_ratio) - SPLITTER_THICKNESS / 2;
+        bool editor_has_active_completion = false;
 
         top_height = std::max(top_height, MIN_PANE_HEIGHT);
         bottom_height = std::max(bottom_height, MIN_PANE_HEIGHT);
@@ -634,6 +670,7 @@ namespace lfs::vis::gui::panels {
                     // Ctrl+Enter was pressed - execute
                     execute_python_code(editor->getTextStripped(), state);
                 }
+                editor_has_active_completion = editor->hasActiveCompletion();
                 if (editor->consumeTextChanged()) {
                     state.setModified(true);
                 }
@@ -670,7 +707,10 @@ namespace lfs::vis::gui::panels {
         ImGui::PopStyleColor(3);
 
         // Bottom pane with tabs
-        ImGui::BeginChild("##bottom_pane", ImVec2(content_avail.x, bottom_height), false);
+        const ImGuiWindowFlags bottom_pane_flags =
+            editor_has_active_completion ? ImGuiWindowFlags_NoNav : ImGuiWindowFlags_None;
+        ImGui::BeginChild("##bottom_pane", ImVec2(content_avail.x, bottom_height), false,
+                          bottom_pane_flags);
         {
             const bool terminal_has_focus = state.getTerminal() && state.getTerminal()->isFocused();
             const ImGuiTabItemFlags terminal_tab_flags =
@@ -889,6 +929,9 @@ namespace lfs::vis::gui::panels {
             ImGui::SetTooltip("Format code (Ctrl+Shift+F)");
 
         ImGui::SameLine();
+        draw_vim_mode_button(state, t);
+
+        ImGui::SameLine();
         ImGui::TextColored(t.palette.text_dim, "|");
         ImGui::SameLine();
 
@@ -982,6 +1025,7 @@ namespace lfs::vis::gui::panels {
 
         float top_height = total_height * g_splitter_ratio - SPLITTER_THICKNESS / 2;
         float bottom_height = total_height * (1.0f - g_splitter_ratio) - SPLITTER_THICKNESS / 2;
+        bool editor_has_active_completion = false;
 
         top_height = std::max(top_height, MIN_PANE_HEIGHT);
         bottom_height = std::max(bottom_height, MIN_PANE_HEIGHT);
@@ -1004,6 +1048,7 @@ namespace lfs::vis::gui::panels {
                 if (editor->render(editor_size)) {
                     execute_python_code(editor->getTextStripped(), state);
                 }
+                editor_has_active_completion = editor->hasActiveCompletion();
                 if (editor->consumeTextChanged()) {
                     state.setModified(true);
                 }
@@ -1040,7 +1085,10 @@ namespace lfs::vis::gui::panels {
         ImGui::PopStyleColor(3);
 
         // Bottom pane with tabs
-        ImGui::BeginChild("##docked_bottom_pane", ImVec2(content_avail.x, bottom_height), false);
+        const ImGuiWindowFlags bottom_pane_flags =
+            editor_has_active_completion ? ImGuiWindowFlags_NoNav : ImGuiWindowFlags_None;
+        ImGui::BeginChild("##docked_bottom_pane", ImVec2(content_avail.x, bottom_height), false,
+                          bottom_pane_flags);
         {
             ImFont* const scaled_mono_bottom = ctx.fonts.monoForScale(state.getFontScale());
             const bool terminal_has_focus = state.getTerminal() && state.getTerminal()->isFocused();

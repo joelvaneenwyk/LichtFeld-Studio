@@ -907,9 +907,14 @@ namespace lfs::vis::gui {
         rmlui_manager_.beginFrameCursorTracking();
 
         if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
-            ImGui::ClearActiveID();
-            if (auto* editor = panels::PythonConsoleState::getInstance().getEditor()) {
-                editor->unfocus();
+            auto* editor = panels::PythonConsoleState::getInstance().getEditor();
+            const bool editor_owns_escape =
+                editor && (editor->isFocused() || editor->hasActiveCompletion());
+            if (!editor_owns_escape) {
+                ImGui::ClearActiveID();
+                if (editor != nullptr) {
+                    editor->unfocus();
+                }
             }
         }
 
