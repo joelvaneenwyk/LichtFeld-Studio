@@ -3,7 +3,7 @@
 """RmlUI widget builder helpers for constructing DOM subtrees
 with correct CSS classes from components.rcss.
 
-Usage in RmlPanel.on_load():
+Usage in Panel.on_mount():
 
     from . import rml_widgets as w
 
@@ -17,6 +17,15 @@ Usage in RmlPanel.on_load():
     w.collapsible(container, "advanced", title="Advanced Settings")
     w.progress(container, "prog", value=0.5, label="50%")
 """
+
+
+def find_ancestor_with_attribute(element, attribute, stop=None):
+    """Walk up the DOM tree looking for an element with the given attribute."""
+    while element is not None and element != stop:
+        if element.has_attribute(attribute):
+            return element
+        element = element.parent()
+    return None
 
 
 def _section_duration(height_px, duration):

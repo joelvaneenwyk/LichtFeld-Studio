@@ -31,6 +31,16 @@ namespace lfs::python {
 
     void register_plugins(nb::module_& m) {
         auto plugins = m.def_submodule("plugins", "Plugin system - management, capabilities, panels, and settings");
+        plugins.attr("API_VERSION") = "1.0";
+
+        nb::list features;
+        features.append("capabilities.v1");
+        features.append("menus.v1");
+        features.append("operators.v1");
+        features.append("panels.v1");
+        features.append("settings.v1");
+        features.append("signals.v1");
+        plugins.attr("FEATURES") = features;
 
         // ===== Plugin Management =====
 

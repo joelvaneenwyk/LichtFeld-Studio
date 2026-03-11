@@ -10,32 +10,22 @@
 
 #include <RmlUi/Core/ElementDocument.h>
 #include <cassert>
-#include <mutex>
 #include <imgui.h>
 
 namespace lfs::vis::gui {
 
-    namespace {
-        void warnLegacyImModePathOnce() {
-            static std::once_flag once;
-            std::call_once(once, [] {
-                LOG_WARN("Rml transition: RmlImModePanelAdapter is a legacy compatibility path. "
-                         "Keep existing panels working, but migrate new and touched panels to "
-                         "retained Rml data models.");
-            });
-        }
-    } // namespace
-
-    static constexpr const char* IM_MODE_RML = "rmlui/im_mode_panel.rml";
-
-    RmlImModePanelAdapter::RmlImModePanelAdapter(void* manager, nb::object panel_instance, bool has_poll)
+    RmlImModePanelAdapter::RmlImModePanelAdapter(void* manager, nb::object panel_instance,
+                                                 const bool has_poll,
+                                                 const std::string& rml_path)
         : manager_(manager),
+          rml_path_(rml_path),
           panel_instance_(std::move(panel_instance)),
           has_poll_(has_poll) {
         assert(manager_);
     }
 
     RmlImModePanelAdapter::~RmlImModePanelAdapter() {
+        layout_.release_elements();
         if (host_) {
             const auto& ops = lfs::python::get_rml_panel_host_ops();
             assert(ops.destroy);
@@ -46,13 +36,12 @@ namespace lfs::vis::gui {
     void RmlImModePanelAdapter::ensureHost() {
         if (host_)
             return;
-        warnLegacyImModePathOnce();
         const auto& ops = lfs::python::get_rml_panel_host_ops();
         assert(ops.create);
 
         static int ctx_counter = 0;
         std::string ctx_name = "im_mode_" + std::to_string(ctx_counter++);
-        host_ = ops.create(manager_, ctx_name.c_str(), IM_MODE_RML);
+        host_ = ops.create(manager_, ctx_name.c_str(), rml_path_.c_str(), "");
 
         if (host_ && ops.set_height_mode)
             ops.set_height_mode(host_, 1);

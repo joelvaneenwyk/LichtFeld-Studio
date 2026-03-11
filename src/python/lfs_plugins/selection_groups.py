@@ -4,18 +4,18 @@
 
 import lichtfeld as lf
 
-from .types import RmlPanel
+from .types import Panel
 
 SELECTION_GROUPS_MODEL = "selection_groups"
 
 
-class SelectionGroupsPanel(RmlPanel):
-    idname = "lfs.selection_groups"
+class SelectionGroupsPanel(Panel):
+    id = "lfs.selection_groups"
     label = "Selection Groups"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 110
-    rml_template = "rmlui/selection_groups.rml"
-    rml_height_mode = "content"
+    template = "rmlui/selection_groups.rml"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     update_interval_ms = 50
 
     def __init__(self):
@@ -43,8 +43,8 @@ class SelectionGroupsPanel(RmlPanel):
         model.bind_record_list("groups")
         self._handle = model.get_handle()
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
         self.doc = doc
 
         header = doc.get_element_by_id("hdr-groups")
@@ -97,7 +97,7 @@ class SelectionGroupsPanel(RmlPanel):
         del doc
         self._prev_group_hash = None
 
-    def on_unload(self, doc):
+    def on_unmount(self, doc):
         doc.remove_data_model(SELECTION_GROUPS_MODEL)
         self._handle = None
         self.doc = None
@@ -165,17 +165,12 @@ class SelectionGroupsPanel(RmlPanel):
         self._handle.update_record_list("groups", records)
 
     def _find_action_element(self, element):
-        for _ in range(5):
-            if element is None:
-                return None, None
+        while element is not None:
             action = element.get_attribute("data-action")
             if action:
                 gid = element.get_attribute("data-gid", "-1")
                 return action, int(gid)
-            parent = element.parent()
-            if parent is None:
-                return None, None
-            element = parent
+            element = element.parent()
         return None, None
 
     def _on_group_click(self, event):
@@ -308,7 +303,7 @@ class SelectionGroupsPanel(RmlPanel):
 
 
 def register():
-    lf.ui.register_rml_panel(SelectionGroupsPanel)
+    lf.register_class(SelectionGroupsPanel)
     lf.ui.set_panel_parent("lfs.selection_groups", "lfs.rendering")
 
 

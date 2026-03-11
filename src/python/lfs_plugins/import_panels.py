@@ -6,13 +6,12 @@ from pathlib import Path
 
 import lichtfeld as lf
 
-from .types import RmlPanel
+from .types import Panel
+from .rml_keys import KI_ESCAPE, KI_RETURN
 
 
 _dataset_import_panel = None
 _resume_checkpoint_panel = None
-
-KI_ESCAPE = 81
 
 
 def open_dataset_import_panel(dataset_path: str) -> bool:
@@ -29,14 +28,15 @@ def open_resume_checkpoint_panel(checkpoint_path: str) -> bool:
     return _resume_checkpoint_panel.show(checkpoint_path)
 
 
-class _ImportDialogPanel(RmlPanel):
+class _ImportDialogPanel(Panel):
     """Common behavior for retained import dialogs."""
 
     update_interval_ms = 200
     form_id = ""
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
+        self._last_lang = lf.ui.get_current_language()
         doc.add_event_listener("keydown", self._on_keydown)
         self._form = doc.get_element_by_id(self.form_id) if self.form_id else None
         if self._form:
@@ -45,7 +45,10 @@ class _ImportDialogPanel(RmlPanel):
 
     def _on_keydown(self, event):
         key = int(event.get_parameter("key_identifier", "0"))
-        if key == KI_ESCAPE:
+        if key == KI_RETURN and self._can_submit_from_keyboard():
+            self._on_do_load()
+            event.stop_propagation()
+        elif key == KI_ESCAPE:
             self._on_do_cancel()
             event.stop_propagation()
 
@@ -76,13 +79,13 @@ class _ImportDialogPanel(RmlPanel):
 class DatasetImportPanel(_ImportDialogPanel):
     """Floating panel for configuring dataset import paths."""
 
-    idname = "lfs.dataset_import"
+    id = "lfs.dataset_import"
     label = "Load Dataset"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 11
-    rml_template = "rmlui/dataset_import_panel.rml"
-    rml_height_mode = "content"
-    initial_width = 560
+    template = "rmlui/dataset_import_panel.rml"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
+    size = (560, 0)
     form_id = "dataset-import-form"
 
     def __init__(self):
@@ -93,6 +96,7 @@ class DatasetImportPanel(_ImportDialogPanel):
         self._dataset_info = None
         self._output_path = ""
         self._init_path = ""
+        self._last_lang = ""
 
     def on_bind_model(self, ctx):
         model = ctx.create_data_model("dataset_import")
@@ -121,6 +125,11 @@ class DatasetImportPanel(_ImportDialogPanel):
 
     def on_update(self, doc):
         del doc
+        current_lang = lf.ui.get_current_language()
+        if current_lang != self._last_lang:
+            self._last_lang = current_lang
+            self._dirty_model()
+            return True
         return False
 
     def show(self, dataset_path: str) -> bool:
@@ -132,7 +141,7 @@ class DatasetImportPanel(_ImportDialogPanel):
         self._output_path = str(Path(info.base_path) / "output")
         self._init_path = ""
         self._dirty_model()
-        lf.ui.set_panel_enabled(self.idname, True)
+        lf.ui.set_panel_enabled(self.id, True)
         return True
 
     def _can_submit_from_keyboard(self) -> bool:
@@ -196,7 +205,7 @@ class DatasetImportPanel(_ImportDialogPanel):
         base_path = str(self._dataset_info.base_path)
         init_path = self._init_path.strip()
 
-        lf.ui.set_panel_enabled(self.idname, False)
+        lf.ui.set_panel_enabled(self.id, False)
         lf.load_file(
             base_path,
             is_dataset=True,
@@ -205,19 +214,19 @@ class DatasetImportPanel(_ImportDialogPanel):
         )
 
     def _on_do_cancel(self, _handle=None, _ev=None, _args=None):
-        lf.ui.set_panel_enabled(self.idname, False)
+        lf.ui.set_panel_enabled(self.id, False)
 
 
 class ResumeCheckpointPanel(_ImportDialogPanel):
     """Floating panel for configuring checkpoint resume paths."""
 
-    idname = "lfs.resume_checkpoint"
+    id = "lfs.resume_checkpoint"
     label = "Resume Checkpoint"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 12
-    rml_template = "rmlui/resume_checkpoint_panel.rml"
-    rml_height_mode = "content"
-    initial_width = 580
+    template = "rmlui/resume_checkpoint_panel.rml"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
+    size = (580, 0)
     form_id = "resume-checkpoint-form"
 
     def __init__(self):
@@ -232,6 +241,7 @@ class ResumeCheckpointPanel(_ImportDialogPanel):
         self._output_path = ""
         self._dataset_valid = False
         self._stored_dataset_exists = False
+        self._last_lang = ""
 
     def on_bind_model(self, ctx):
         model = ctx.create_data_model("resume_checkpoint")
@@ -260,6 +270,11 @@ class ResumeCheckpointPanel(_ImportDialogPanel):
 
     def on_update(self, doc):
         del doc
+        current_lang = lf.ui.get_current_language()
+        if current_lang != self._last_lang:
+            self._last_lang = current_lang
+            self._dirty_model()
+            return True
         return False
 
     def show(self, checkpoint_path: str) -> bool:
@@ -279,7 +294,7 @@ class ResumeCheckpointPanel(_ImportDialogPanel):
         self._stored_dataset_exists = self._validate_dataset(self._stored_dataset_path)
         self._dataset_valid = self._stored_dataset_exists
         self._dirty_model()
-        lf.ui.set_panel_enabled(self.idname, True)
+        lf.ui.set_panel_enabled(self.id, True)
         return True
 
     def _can_submit_from_keyboard(self) -> bool:
@@ -313,7 +328,9 @@ class ResumeCheckpointPanel(_ImportDialogPanel):
         return "impdlg-value text-default"
 
     def _dataset_status_text(self) -> str:
-        return "@tr:common.ok" if self._dataset_valid else "@tr:resume_checkpoint_popup.invalid"
+        if self._dataset_valid:
+            return lf.ui.tr("common.ok") or "common.ok"
+        return lf.ui.tr("resume_checkpoint_popup.invalid") or "resume_checkpoint_popup.invalid"
 
     def _dataset_status_class(self) -> str:
         if self._dataset_valid:
@@ -349,7 +366,7 @@ class ResumeCheckpointPanel(_ImportDialogPanel):
         if not self._dataset_valid or not self._checkpoint_path:
             return
 
-        lf.ui.set_panel_enabled(self.idname, False)
+        lf.ui.set_panel_enabled(self.id, False)
         lf.load_checkpoint_for_training(
             self._checkpoint_path,
             self._dataset_path,
@@ -357,4 +374,4 @@ class ResumeCheckpointPanel(_ImportDialogPanel):
         )
 
     def _on_do_cancel(self, _handle=None, _ev=None, _args=None):
-        lf.ui.set_panel_enabled(self.idname, False)
+        lf.ui.set_panel_enabled(self.id, False)

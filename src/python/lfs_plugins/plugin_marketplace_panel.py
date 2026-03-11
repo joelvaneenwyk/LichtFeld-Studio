@@ -16,7 +16,7 @@ from .marketplace import (
     PluginMarketplaceCatalog,
 )
 from .plugin import PluginInfo, PluginState
-from .types import RmlPanel
+from .types import Panel
 
 MAX_OUTPUT_LINES = 100
 SUCCESS_DISMISS_SEC = 3.0
@@ -52,16 +52,16 @@ class CardOpState:
     finished_at: float = 0.0
 
 
-class PluginMarketplacePanel(RmlPanel):
+class PluginMarketplacePanel(Panel):
     """Floating plugin window for browsing, installing, and managing plugins."""
 
-    idname = "lfs.plugin_marketplace"
+    id = "lfs.plugin_marketplace"
     label = "Plugin Marketplace"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 91
-    rml_template = "rmlui/plugin_marketplace.rml"
-    rml_height_mode = "content"
-    initial_width = 770
+    template = "rmlui/plugin_marketplace.rml"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
+    size = (770, 0)
     update_interval_ms = 100
 
     def __init__(self):
@@ -148,8 +148,8 @@ class PluginMarketplacePanel(RmlPanel):
 
     # ── Lifecycle ─────────────────────────────────────────────
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
         self._doc = doc
         self._last_lang = lf.ui.get_current_language()
         self._entries_dirty = True
@@ -540,43 +540,28 @@ class PluginMarketplacePanel(RmlPanel):
         self._set_startup_preference(target, plugin_name)
 
     def _find_card_action(self, element):
-        for _ in range(6):
-            if element is None:
-                return None, None, None
+        while element is not None:
             action = element.get_attribute("data-action")
             if action:
                 card_id = element.get_attribute("data-card-id", "")
                 plugin_name = element.get_attribute("data-plugin", "")
                 return action, card_id, plugin_name or None
-            p = element.parent()
-            if p is None:
-                return None, None, None
-            element = p
+            element = element.parent()
         return None, None, None
 
     def _find_element_with_attr(self, element, attr, value):
-        for _ in range(6):
-            if element is None:
-                return None
+        while element is not None:
             if element.get_attribute(attr, "") == value:
                 return element
-            p = element.parent()
-            if p is None:
-                return None
-            element = p
+            element = element.parent()
         return None
 
     def _find_data_attr(self, element, attr):
-        for _ in range(6):
-            if element is None:
-                return None
+        while element is not None:
             val = element.get_attribute(attr, "")
             if val:
                 return val
-            p = element.parent()
-            if p is None:
-                return None
-            element = p
+            element = element.parent()
         return None
 
     def _set_startup_preference(self, element, plugin_name: str):

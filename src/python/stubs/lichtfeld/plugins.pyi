@@ -3,6 +3,10 @@
 from collections.abc import Callable
 
 
+API_VERSION: str = '1.0'
+
+FEATURES: list = ...
+
 def discover() -> object:
     """Discover plugins in ~/.lichtfeld/plugins/"""
 

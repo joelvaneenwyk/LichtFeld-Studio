@@ -8,19 +8,20 @@ from typing import Iterable
 
 import lichtfeld as lf
 
-from .types import RmlPanel
+from . import rml_widgets
+from .types import Panel
 
 
-class Mesh2SplatPanel(RmlPanel):
+class Mesh2SplatPanel(Panel):
     """Floating retained panel for mesh-to-splat conversion."""
 
-    idname = "native.mesh2splat"
+    id = "native.mesh2splat"
     label = "Mesh to Splat"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 12
-    rml_template = "rmlui/mesh2splat_panel.rml"
-    rml_height_mode = "content"
-    initial_width = 420
+    template = "rmlui/mesh2splat_panel.rml"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
+    size = (420, 0)
     update_interval_ms = 100
 
     _RESOLUTION_OPTIONS = (128, 256, 512, 1024, 2048, 4096)
@@ -68,8 +69,8 @@ class Mesh2SplatPanel(RmlPanel):
 
         self._handle = model.get_handle()
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
 
         mesh_list = doc.get_element_by_id("mesh-list")
         if mesh_list:
@@ -280,16 +281,9 @@ class Mesh2SplatPanel(RmlPanel):
         )
         return True
 
-    def _find_ancestor_with_attribute(self, element, attribute, stop=None):
-        while element is not None and element != stop:
-            if element.has_attribute(attribute):
-                return element
-            element = element.parent()
-        return None
-
     def _on_mesh_click(self, event):
         container = event.current_target()
-        target = self._find_ancestor_with_attribute(event.target(), "data-mesh-name", container)
+        target = rml_widgets.find_ancestor_with_attribute(event.target(), "data-mesh-name", container)
         if target is None:
             return
 
@@ -303,7 +297,7 @@ class Mesh2SplatPanel(RmlPanel):
 
     def _on_resolution_click(self, event):
         container = event.current_target()
-        target = self._find_ancestor_with_attribute(event.target(), "data-resolution-index", container)
+        target = rml_widgets.find_ancestor_with_attribute(event.target(), "data-resolution-index", container)
         if target is None:
             return
 

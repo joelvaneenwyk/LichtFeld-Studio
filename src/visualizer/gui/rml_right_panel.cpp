@@ -37,7 +37,7 @@ namespace lfs::vis::gui {
         assert(ctor);
 
         if (auto h = ctor.RegisterStruct<TabSnapshot>()) {
-            h.RegisterMember("idname", &TabSnapshot::idname);
+            h.RegisterMember("id", &TabSnapshot::id);
             h.RegisterMember("label", &TabSnapshot::label);
             h.RegisterMember("dom_id", &TabSnapshot::dom_id);
             h.RegisterMember("nav_left", &TabSnapshot::nav_left);
@@ -50,9 +50,9 @@ namespace lfs::vis::gui {
         ctor.BindEventCallback("tab_click",
                                [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList& args) {
                                    if (!args.empty()) {
-                                       auto idname = args[0].Get<Rml::String>();
-                                       if (!idname.empty() && on_tab_changed)
-                                           on_tab_changed(std::string(idname));
+                                       auto id = args[0].Get<Rml::String>();
+                                       if (!id.empty() && on_tab_changed)
+                                           on_tab_changed(std::string(id));
                                    }
                                });
 

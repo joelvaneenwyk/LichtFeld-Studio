@@ -70,6 +70,16 @@ ACTION_NAMES = (
 
 
 def _install_lf_stub(monkeypatch):
+    panel_space = SimpleNamespace(
+        SIDE_PANEL="SIDE_PANEL",
+        FLOATING="FLOATING",
+        VIEWPORT_OVERLAY="VIEWPORT_OVERLAY",
+        MAIN_PANEL_TAB="MAIN_PANEL_TAB",
+        SCENE_HEADER="SCENE_HEADER",
+        STATUS_BAR="STATUS_BAR",
+    )
+    panel_height_mode = SimpleNamespace(FILL="fill", CONTENT="content")
+    panel_option = SimpleNamespace(DEFAULT_CLOSED="DEFAULT_CLOSED", HIDE_HEADER="HIDE_HEADER")
     tool_mode = IntEnum("ToolMode", {name: index for index, name in enumerate(TOOL_MODE_NAMES)})
     action = IntEnum("Action", {name: index for index, name in enumerate(ACTION_NAMES)})
 
@@ -104,6 +114,9 @@ def _install_lf_stub(monkeypatch):
     lf_stub = ModuleType("lichtfeld")
     lf_stub.keymap = keymap
     lf_stub.ui = SimpleNamespace(
+        PanelSpace=panel_space,
+        PanelHeightMode=panel_height_mode,
+        PanelOption=panel_option,
         tr=lambda key: key,
         get_current_language=lambda: state.language[0],
     )
@@ -230,4 +243,3 @@ def test_input_settings_language_change_rebuilds_and_dirties_all(input_settings_
     assert panel._handle.records["profiles"][0]["label"] == "Default"
     assert panel._handle.records["tool_modes"][0]["label"] == "Mode GLOBAL"
     assert panel._handle.records["binding_rows"][0]["is_section"] is True
-

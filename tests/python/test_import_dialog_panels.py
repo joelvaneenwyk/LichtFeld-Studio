@@ -11,6 +11,16 @@ import pytest
 
 
 def _install_lf_stub(monkeypatch, tmp_path):
+    panel_space = SimpleNamespace(
+        SIDE_PANEL="SIDE_PANEL",
+        FLOATING="FLOATING",
+        VIEWPORT_OVERLAY="VIEWPORT_OVERLAY",
+        MAIN_PANEL_TAB="MAIN_PANEL_TAB",
+        SCENE_HEADER="SCENE_HEADER",
+        STATUS_BAR="STATUS_BAR",
+    )
+    panel_height_mode = SimpleNamespace(FILL="fill", CONTENT="content")
+    panel_option = SimpleNamespace(DEFAULT_CLOSED="DEFAULT_CLOSED", HIDE_HEADER="HIDE_HEADER")
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     output_dir = dataset_dir / "output"
@@ -45,6 +55,9 @@ def _install_lf_stub(monkeypatch, tmp_path):
 
     lf_stub = ModuleType("lichtfeld")
     lf_stub.ui = SimpleNamespace(
+        PanelSpace=panel_space,
+        PanelHeightMode=panel_height_mode,
+        PanelOption=panel_option,
         tr=lambda key: key,
         get_current_language=lambda: state.language[0],
         set_panel_enabled=lambda panel_id, enabled: state.panel_enabled_calls.append((panel_id, enabled)),
@@ -219,7 +232,7 @@ def test_dataset_import_panel_binds_enter_and_escape(import_dialog_module):
     panel._handle = _HandleStub()
     document = _DocumentStub()
 
-    panel.on_load(document)
+    panel.on_mount(document)
     assert panel.show("/tmp/dataset") is True
 
     enter_event = _EventStub(module.KI_RETURN)
@@ -248,7 +261,7 @@ def test_resume_checkpoint_panel_binds_enter_and_escape(import_dialog_module):
     panel._handle = _HandleStub()
     document = _DocumentStub()
 
-    panel.on_load(document)
+    panel.on_mount(document)
     assert panel.show(state.checkpoint_path) is True
 
     enter_event = _EventStub(module.KI_RETURN)

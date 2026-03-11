@@ -516,6 +516,7 @@ namespace lfs::training {
             }
 
             // Re-initialize strategy with new parameters
+            strategy_->set_training_dataset(train_dataset_);
             strategy_->initialize(params.optimization);
             LOG_DEBUG("Strategy initialized");
 
@@ -1648,6 +1649,13 @@ namespace lfs::training {
                     .emit();
             }
 
+            const bool in_sparsification = params_.optimization.enable_sparsity &&
+                                           iter > (params_.optimization.iterations - params_.optimization.sparsify_steps);
+
+            if (!in_sparsification) {
+                strategy_->pre_step(iter, r_output);
+            }
+
             {
                 DeferredEvents deferred;
                 {
@@ -1668,9 +1676,6 @@ namespace lfs::training {
                         lfs::training::ControlBoundary::instance().notify(lfs::training::ControlHook::PreOptimizerStep, ctx);
                     }
 
-                    // Skip post_backward during sparsification phase
-                    const bool in_sparsification = params_.optimization.enable_sparsity &&
-                                                   iter > (params_.optimization.iterations - params_.optimization.sparsify_steps);
                     if (!in_sparsification) {
                         strategy_->post_backward(iter, r_output);
                     }

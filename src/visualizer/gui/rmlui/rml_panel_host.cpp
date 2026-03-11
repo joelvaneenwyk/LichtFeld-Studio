@@ -187,14 +187,17 @@ namespace lfs::vis::gui {
     } // namespace
 
     RmlPanelHost::RmlPanelHost(RmlUIManager* manager, std::string context_name,
-                               std::string rml_path)
+                               std::string rml_path, std::string inline_rcss)
         : manager_(manager),
           context_name_(std::move(context_name)),
-          rml_path_(std::move(rml_path)) {
+          rml_path_(std::move(rml_path)),
+          inline_rcss_(std::move(inline_rcss)) {
         assert(manager_);
     }
 
     RmlPanelHost::~RmlPanelHost() {
+        std::erase_if(queued_foreground_composites_,
+                      [this](const CompositeCommand& cmd) { return cmd.fbo == &fbo_; });
         if (rml_context_ && manager_) {
             manager_->destroyContext(context_name_);
             rml_context_ = nullptr;
@@ -253,9 +256,24 @@ namespace lfs::vis::gui {
         last_theme_signature_ = theme_signature;
         has_theme_signature_ = true;
 
-        if (base_rcss_.empty()) {
+        if (!base_rcss_loaded_) {
             auto rcss_name = std::filesystem::path(rml_path_).replace_extension(".rcss").string();
-            base_rcss_ = rml_theme::loadBaseRCSS(rcss_name);
+            try {
+                const auto requested_path = std::filesystem::path(rcss_name);
+                const auto resolved_path = requested_path.is_absolute()
+                                               ? requested_path
+                                               : lfs::vis::getAssetPath(rcss_name);
+                if (std::filesystem::exists(resolved_path))
+                    base_rcss_ = rml_theme::loadBaseRCSS(resolved_path.string());
+            } catch (const std::exception& e) {
+                LOG_INFO("RCSS load failed for '{}': {}", rcss_name, e.what());
+            }
+            if (!inline_rcss_.empty()) {
+                if (!base_rcss_.empty())
+                    base_rcss_ += "\n";
+                base_rcss_ += inline_rcss_;
+            }
+            base_rcss_loaded_ = true;
         }
 
         rml_theme::applyTheme(document_, base_rcss_, rml_theme::generateAllThemeMedia([this](const auto& th) { return generateThemeRCSS(th); }));
@@ -384,7 +402,10 @@ namespace lfs::vis::gui {
             return measured;
         }
 
-        return content_wrap_el_ ? content_wrap_el_->GetOffsetHeight() : 100.0f;
+        if (content_wrap_el_)
+            return content_wrap_el_->GetOffsetHeight();
+
+        return document_->GetOffsetHeight();
     }
 
     float RmlPanelHost::clampScrollTop(const float scroll_top) const {
@@ -432,7 +453,7 @@ namespace lfs::vis::gui {
         last_layout_w_ = pw;
         last_layout_h_ = ph;
 
-        if (height_mode_ == HeightMode::Content) {
+        if (height_mode_ == PanelHeightMode::Content) {
             last_content_height_ = computeContentHeight();
             if (content_el_)
                 last_content_el_height_ = content_el_->GetOffsetHeight();
@@ -470,7 +491,7 @@ namespace lfs::vis::gui {
             return;
 
         const bool need_content_measure =
-            height_mode_ == HeightMode::Content &&
+            height_mode_ == PanelHeightMode::Content &&
             (pw != last_measure_w_ || ph != last_layout_h_ || content_dirty_ ||
              last_content_height_ <= 0.0f);
         const float saved_scroll = scroll_el_ ? scroll_el_->GetScrollTop() : 0.0f;
@@ -538,7 +559,7 @@ namespace lfs::vis::gui {
         }
 
         content_dirty_ = false;
-        if (height_mode_ != HeightMode::Content)
+        if (height_mode_ != PanelHeightMode::Content)
             last_content_height_ = display_h;
 
         auto* render = manager_->getRenderInterface();
@@ -561,7 +582,7 @@ namespace lfs::vis::gui {
         last_fbo_h_ = ph;
         render_needed_ = false;
 
-        if (height_mode_ == HeightMode::Content) {
+        if (height_mode_ == PanelHeightMode::Content) {
             const float prev_content_h = last_content_height_;
             const float actual_content_h = computeContentHeight();
             last_content_height_ = actual_content_h;
@@ -595,7 +616,7 @@ namespace lfs::vis::gui {
 
         int h;
         float display_h;
-        if (height_mode_ == HeightMode::Content) {
+        if (height_mode_ == PanelHeightMode::Content) {
             h = std::max(1, static_cast<int>(std::ceil(last_content_height_)));
             display_h = last_content_height_;
         } else {
@@ -625,7 +646,7 @@ namespace lfs::vis::gui {
     }
 
     void RmlPanelHost::resolveDirectRenderHeight(float requested_h, int& ph, float& display_h) const {
-        if (height_mode_ == HeightMode::Content) {
+        if (height_mode_ == PanelHeightMode::Content) {
             const float ch = last_content_height_;
             if (ch > 0 && requested_h < ch) {
                 ph = static_cast<int>(requested_h);

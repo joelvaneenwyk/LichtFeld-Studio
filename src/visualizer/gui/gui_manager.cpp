@@ -66,10 +66,10 @@ namespace lfs::vis::gui {
     namespace {
         const FrameInputBuffer* s_frame_input = nullptr;
 
-        std::string makeRmlTabDomId(const std::string& idname) {
+        std::string makeRmlTabDomId(const std::string& id) {
             std::string result = "rp-tab-";
-            result.reserve(result.size() + idname.size());
-            for (const char ch : idname) {
+            result.reserve(result.size() + id.size());
+            for (const char ch : id) {
                 const bool keep = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
                                   (ch >= '0' && ch <= '9') || ch == '-' || ch == '_';
                 result.push_back(keep ? ch : '-');
@@ -615,8 +615,8 @@ namespace lfs::vis::gui {
         startup_overlay_.init(&rmlui_manager_);
         rml_shell_frame_.init(&rmlui_manager_);
         rml_right_panel_.init(&rmlui_manager_);
-        rml_right_panel_.on_tab_changed = [this](const std::string& idname) {
-            panel_layout_.setActiveTab(idname);
+        rml_right_panel_.on_tab_changed = [this](const std::string& id) {
+            panel_layout_.setActiveTab(id);
         };
         rml_right_panel_.on_splitter_delta = [this](float delta_y) {
             viewer_->getRenderingManager()->setViewportResizeActive(true);
@@ -645,9 +645,11 @@ namespace lfs::vis::gui {
         rml_status_bar_.init(&rmlui_manager_);
 
         lfs::python::RmlPanelHostOps ops{};
-        ops.create = [](void* mgr, const char* name, const char* rml) -> void* {
+        ops.create = [](void* mgr, const char* name, const char* rml,
+                        const char* inline_rcss) -> void* {
             return new RmlPanelHost(static_cast<RmlUIManager*>(mgr),
-                                    std::string(name), std::string(rml));
+                                    std::string(name), std::string(rml),
+                                    inline_rcss ? std::string(inline_rcss) : std::string{});
         };
         ops.destroy = [](void* host) {
             if (lfs::python::on_gl_thread()) {
@@ -707,7 +709,7 @@ namespace lfs::vis::gui {
         };
         ops.set_height_mode = [](void* host, int mode) {
             static_cast<RmlPanelHost*>(host)->setHeightMode(
-                static_cast<HeightMode>(mode));
+                static_cast<PanelHeightMode>(mode));
         };
         ops.get_content_height = [](void* host) -> float {
             return static_cast<RmlPanelHost*>(host)->getContentHeight();
@@ -770,6 +772,7 @@ namespace lfs::vis::gui {
         rml_right_panel_.shutdown();
         rml_shell_frame_.shutdown();
         startup_overlay_.shutdown();
+        PanelRegistry::instance().unregister_all_non_native();
         rmlui_manager_.shutdown();
 
         if (need_gil)
@@ -797,13 +800,13 @@ namespace lfs::vis::gui {
             return ptr;
         };
 
-        auto reg_panel = [&](const std::string& idname, const std::string& label,
+        auto reg_panel = [&](const std::string& id, const std::string& label,
                              std::shared_ptr<IPanel> panel, PanelSpace space, int order,
                              uint32_t options = 0, float initial_width = 0, float initial_height = 0) {
             PanelInfo info;
             info.panel = std::move(panel);
             info.label = label;
-            info.idname = idname;
+            info.id = id;
             info.space = space;
             info.order = order;
             info.options = options;
@@ -989,40 +992,6 @@ namespace lfs::vis::gui {
         updateInputOverrides(frame_input, mouse_in_viewport);
 
         auto& reg = PanelRegistry::instance();
-        const bool has_dockable_panels = reg.has_panels(PanelSpace::Dockable);
-        const bool needs_imgui_dockspace =
-            reg.has_legacy_imgui_window_wrapped_panels(PanelSpace::Dockable);
-        if (needs_imgui_dockspace) {
-            const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
-            ImGui::SetNextWindowPos(main_viewport->WorkPos);
-            ImGui::SetNextWindowSize(main_viewport->WorkSize);
-            ImGui::SetNextWindowViewport(main_viewport->ID);
-
-            ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDocking |
-                                            ImGuiWindowFlags_NoTitleBar |
-                                            ImGuiWindowFlags_NoCollapse |
-                                            ImGuiWindowFlags_NoResize |
-                                            ImGuiWindowFlags_NoMove |
-                                            ImGuiWindowFlags_NoBringToFrontOnFocus |
-                                            ImGuiWindowFlags_NoNavFocus |
-                                            ImGuiWindowFlags_NoBackground;
-
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-
-            ImGui::Begin("DockSpace", nullptr, window_flags);
-            ImGui::PopStyleVar(3);
-
-            // DockSpace ID
-            ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
-
-            // Create dockspace
-            ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode;
-            ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
-
-            ImGui::End();
-        }
 
         if (!ui_hidden_) {
             const auto* mvp = ImGui::GetMainViewport();
@@ -1160,13 +1129,13 @@ namespace lfs::vis::gui {
             for (size_t i = 0; i < main_tabs.size(); ++i) {
                 const auto& t = main_tabs[i];
                 tab_snaps.push_back({
-                    .idname = t.idname,
+                    .id = t.id,
                     .label = t.label,
-                    .dom_id = makeRmlTabDomId(t.idname),
+                    .dom_id = makeRmlTabDomId(t.id),
                     .nav_left = "#" + makeRmlTabDomId(
-                                          main_tabs[(i + main_tabs.size() - 1) % main_tabs.size()].idname),
+                                          main_tabs[(i + main_tabs.size() - 1) % main_tabs.size()].id),
                     .nav_right = "#" + makeRmlTabDomId(
-                                           main_tabs[(i + 1) % main_tabs.size()].idname),
+                                           main_tabs[(i + 1) % main_tabs.size()].id),
                 });
             }
 
@@ -1208,8 +1177,6 @@ namespace lfs::vis::gui {
         PanelInputState floating_input = panel_input;
         floating_input.bg_draw_list = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
         reg.draw_panels(PanelSpace::Floating, draw_ctx, &floating_input);
-        if (has_dockable_panels)
-            reg.draw_panels(PanelSpace::Dockable, draw_ctx, &panel_input);
 
         applyFrameInputCapture();
 

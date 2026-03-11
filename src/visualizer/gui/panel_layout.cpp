@@ -98,22 +98,22 @@ namespace lfs::vis::gui {
 
         const auto main_tabs = reg.get_panels_for_space(PanelSpace::MainPanelTab);
 
-        const std::string prev_tab = active_tab_idname_;
+        const std::string prev_tab = active_tab_id_;
 
         if (!focus_panel_name.empty()) {
             for (const auto& tab : main_tabs) {
-                if (focus_panel_name == tab.label || focus_panel_name == tab.idname) {
-                    active_tab_idname_ = tab.idname;
+                if (focus_panel_name == tab.label || focus_panel_name == tab.id) {
+                    active_tab_id_ = tab.id;
                     focus_panel_name.clear();
                     break;
                 }
             }
         }
 
-        if (active_tab_idname_.empty() && !main_tabs.empty())
-            active_tab_idname_ = main_tabs[0].idname;
+        if (active_tab_id_.empty() && !main_tabs.empty())
+            active_tab_id_ = main_tabs[0].id;
 
-        if (active_tab_idname_ != prev_tab)
+        if (active_tab_id_ != prev_tab)
             tab_scroll_offset_ = 0.0f;
 
         const float tab_content_y = content_top + scene_h + splitter_h + tab_bar_h;
@@ -124,10 +124,10 @@ namespace lfs::vis::gui {
         constexpr float kPreloadMaxHeight = 100000.0f;
 
         const float preloaded_main_h =
-            reg.preload_single_panel_direct(active_tab_idname_, content_w, kPreloadMaxHeight, draw_ctx,
+            reg.preload_single_panel_direct(active_tab_id_, content_w, kPreloadMaxHeight, draw_ctx,
                                             clip_y_min, clip_y_max, &input);
         const float preloaded_child_h =
-            reg.preload_child_panels_direct(active_tab_idname_, content_w, kPreloadMaxHeight, draw_ctx,
+            reg.preload_child_panels_direct(active_tab_id_, content_w, kPreloadMaxHeight, draw_ctx,
                                             clip_y_min, clip_y_max, &input);
         const float preloaded_total_h = preloaded_main_h + preloaded_child_h;
         const float preloaded_max_scroll =
@@ -152,7 +152,6 @@ namespace lfs::vis::gui {
             tab_scrollbar_dragging_ = false;
 
         if (preloaded_max_scroll > 0.0f && tab_content_h > 0.0f) {
-            const float track_x = content_x + content_draw_w + scrollbar_pad;
             const float track_y = tab_content_y;
             const float track_h = tab_content_h;
             const float ratio = tab_content_h / preloaded_total_h;
@@ -212,20 +211,20 @@ namespace lfs::vis::gui {
         }
 
         const float y_cursor = tab_content_y - tab_scroll_offset_;
-        const float main_h = reg.draw_single_panel_direct(active_tab_idname_,
+        const float main_h = reg.draw_single_panel_direct(active_tab_id_,
                                                           content_x, y_cursor, content_draw_w, kPreloadMaxHeight, draw_ctx,
                                                           clip_y_min, clip_y_max, &content_input);
-        const float child_h = reg.draw_child_panels_direct(active_tab_idname_,
+        const float child_h = reg.draw_child_panels_direct(active_tab_id_,
                                                            content_x, y_cursor + main_h, content_draw_w, kPreloadMaxHeight, draw_ctx,
                                                            clip_y_min, clip_y_max, &content_input);
 
         for (size_t attempt = 0; attempt < main_tabs.size(); ++attempt) {
             const size_t idx = (background_preload_index_ + attempt) % main_tabs.size();
             const auto& tab = main_tabs[idx];
-            if (tab.idname == active_tab_idname_)
+            if (tab.id == active_tab_id_)
                 continue;
 
-            reg.preload_single_panel_direct(tab.idname, content_draw_w, tab_content_h, draw_ctx,
+            reg.preload_single_panel_direct(tab.id, content_draw_w, tab_content_h, draw_ctx,
                                             clip_y_min, clip_y_max, &input);
             background_preload_index_ = idx + 1;
             break;

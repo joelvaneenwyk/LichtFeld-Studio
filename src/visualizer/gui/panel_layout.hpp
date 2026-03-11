@@ -92,8 +92,8 @@ namespace lfs::vis::gui {
         bool isShowSequencer() const { return show_sequencer_; }
         void setShowSequencer(bool v) { show_sequencer_ = v; }
 
-        const std::string& getActiveTab() const { return active_tab_idname_; }
-        void setActiveTab(const std::string& idname) { active_tab_idname_ = idname; }
+        const std::string& getActiveTab() const { return active_tab_id_; }
+        void setActiveTab(const std::string& id) { active_tab_id_ = id; }
 
         static constexpr float SPLITTER_H = 6.0f;
         static constexpr float TAB_BAR_H = 28.0f;
@@ -112,7 +112,7 @@ namespace lfs::vis::gui {
         bool python_console_hovering_edge_ = false;
 
         bool show_sequencer_ = false;
-        std::string active_tab_idname_;
+        std::string active_tab_id_;
 
         float tab_scroll_offset_ = 0.0f;
         float tab_content_total_h_ = 0.0f;

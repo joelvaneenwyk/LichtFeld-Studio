@@ -11,8 +11,21 @@ import pytest
 
 
 def _install_lf_stub(monkeypatch):
+    panel_space = SimpleNamespace(
+        SIDE_PANEL="SIDE_PANEL",
+        FLOATING="FLOATING",
+        VIEWPORT_OVERLAY="VIEWPORT_OVERLAY",
+        MAIN_PANEL_TAB="MAIN_PANEL_TAB",
+        SCENE_HEADER="SCENE_HEADER",
+        STATUS_BAR="STATUS_BAR",
+    )
+    panel_height_mode = SimpleNamespace(FILL="fill", CONTENT="content")
+    panel_option = SimpleNamespace(DEFAULT_CLOSED="DEFAULT_CLOSED", HIDE_HEADER="HIDE_HEADER")
     lf_stub = ModuleType("lichtfeld")
     lf_stub.ui = SimpleNamespace(
+        PanelSpace=panel_space,
+        PanelHeightMode=panel_height_mode,
+        PanelOption=panel_option,
         tr=lambda key: key,
         get_current_language=lambda: "en",
         is_ctrl_down=lambda: False,
@@ -76,6 +89,8 @@ def _make_row(index):
         "depth": 0,
         "draggable": True,
         "training_enabled": True,
+        "has_mask": False,
+        "deletable": True,
     }
 
 

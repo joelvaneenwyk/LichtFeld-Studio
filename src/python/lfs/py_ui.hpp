@@ -673,7 +673,6 @@ namespace lfs::python {
         static PyPanelRegistry& instance();
 
         void register_panel(nb::object panel_class);
-        void register_rml_panel(nb::object panel_class, void* rml_manager);
         void unregister_panel(nb::object panel_class);
         void unregister_for_module(const std::string& prefix);
         void unregister_all();

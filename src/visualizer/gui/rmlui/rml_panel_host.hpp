@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "gui/panel_height_mode.hpp"
 #include "gui/panel_registry.hpp"
 #include "gui/rmlui/rml_fbo.hpp"
 #include <core/export.hpp>
@@ -26,12 +27,10 @@ namespace lfs::vis::gui {
 
     class RmlUIManager;
 
-    enum class HeightMode { Fill,
-                            Content };
-
     class LFS_VIS_API RmlPanelHost {
     public:
-        RmlPanelHost(RmlUIManager* manager, std::string context_name, std::string rml_path);
+        RmlPanelHost(RmlUIManager* manager, std::string context_name, std::string rml_path,
+                     std::string inline_rcss = {});
         ~RmlPanelHost();
 
         RmlPanelHost(const RmlPanelHost&) = delete;
@@ -58,8 +57,8 @@ namespace lfs::vis::gui {
         static void clearQueuedForegroundComposites();
         static void flushQueuedForegroundComposites(int screen_w, int screen_h);
 
-        void setHeightMode(HeightMode mode) { height_mode_ = mode; }
-        HeightMode getHeightMode() const { return height_mode_; }
+        void setHeightMode(PanelHeightMode mode) { height_mode_ = mode; }
+        PanelHeightMode getHeightMode() const { return height_mode_; }
         float getContentHeight() const { return last_content_height_; }
         void setForcedHeight(float h) { forced_height_ = h; }
         void markContentDirty() { content_dirty_ = true; }
@@ -118,6 +117,7 @@ namespace lfs::vis::gui {
         RmlUIManager* manager_;
         std::string context_name_;
         std::string rml_path_;
+        std::string inline_rcss_;
         Rml::Context* rml_context_ = nullptr;
         Rml::ElementDocument* document_ = nullptr;
         Rml::Element* frame_el_ = nullptr;
@@ -125,7 +125,7 @@ namespace lfs::vis::gui {
         Rml::Element* content_el_ = nullptr;
         Rml::Element* scroll_el_ = nullptr;
 
-        HeightMode height_mode_ = HeightMode::Fill;
+        PanelHeightMode height_mode_ = PanelHeightMode::Fill;
         float forced_height_ = 0.0f;
         float last_content_height_ = 0.0f;
         float last_content_el_height_ = 0.0f;
@@ -133,6 +133,7 @@ namespace lfs::vis::gui {
         bool content_dirty_ = true;
 
         std::string base_rcss_;
+        bool base_rcss_loaded_ = false;
         std::size_t last_theme_signature_ = 0;
         bool has_theme_signature_ = false;
         bool has_text_focus_ = false;

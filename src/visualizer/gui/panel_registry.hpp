@@ -5,6 +5,7 @@
 #pragma once
 
 #include "operator/poll_dependency.hpp"
+#include "panel_space.hpp"
 
 #include <core/export.hpp>
 
@@ -28,16 +29,6 @@ namespace lfs::vis::gui {
     struct UIContext;
     struct ViewportLayout;
     struct PanelInputState;
-
-    enum class PanelSpace : uint8_t {
-        SidePanel,
-        Floating,
-        ViewportOverlay,
-        Dockable,
-        MainPanelTab,
-        SceneHeader,
-        StatusBar
-    };
 
     enum class PanelOption : uint32_t {
         DEFAULT_CLOSED = 1 << 0,
@@ -100,13 +91,13 @@ namespace lfs::vis::gui {
     struct PanelInfo {
         std::shared_ptr<IPanel> panel;
         std::string label;
-        std::string idname;
-        std::string parent_idname;
+        std::string id;
+        std::string parent_id;
         PanelSpace space = PanelSpace::Floating;
         int order = 100;
         bool enabled = true;
         uint32_t options = 0;
-        PollDependency poll_deps = PollDependency::ALL;
+        PollDependency poll_dependencies = PollDependency::ALL;
         bool is_native = true;
         int consecutive_errors = 0;
         bool error_disabled = false;
@@ -144,21 +135,35 @@ namespace lfs::vis::gui {
 
     struct PanelSummary {
         std::string label;
-        std::string idname;
+        std::string id;
         PanelSpace space;
         int order;
         bool enabled;
+    };
+
+    struct PanelDetails {
+        std::string label;
+        std::string id;
+        std::string parent_id;
+        PanelSpace space;
+        int order;
+        bool enabled;
+        uint32_t options;
+        PollDependency poll_dependencies;
+        bool is_native;
+        float initial_width;
+        float initial_height;
     };
 
     struct PanelSnapshot {
         size_t index;
         IPanel* panel;
         std::string label;
-        std::string idname;
-        std::string parent_idname;
+        std::string id;
+        std::string parent_id;
         uint32_t options;
         bool is_native;
-        PollDependency poll_deps;
+        PollDependency poll_dependencies;
         float initial_width;
         float initial_height;
         float float_x;
@@ -176,24 +181,23 @@ namespace lfs::vis::gui {
         uint64_t scene_generation;
         bool has_selection;
         bool is_training;
-        PollDependency deps;
+        PollDependency poll_dependencies;
     };
 
     class LFS_VIS_API PanelRegistry {
     public:
         static PanelRegistry& instance();
 
-        void register_panel(PanelInfo info);
-        void unregister_panel(const std::string& idname);
+        bool register_panel(PanelInfo info);
+        void unregister_panel(const std::string& id);
         void unregister_all_non_native();
 
         void draw_panels(PanelSpace space, const PanelDrawContext& ctx,
                          const PanelInputState* input = nullptr);
         void preload_panels(PanelSpace space, const PanelDrawContext& ctx);
-        void draw_single_panel(const std::string& idname, const PanelDrawContext& ctx);
-        void draw_child_panels(const std::string& parent_idname, const PanelDrawContext& ctx);
+        void draw_single_panel(const std::string& id, const PanelDrawContext& ctx);
+        void draw_child_panels(const std::string& parent_id, const PanelDrawContext& ctx);
         bool has_panels(PanelSpace space) const;
-        bool has_legacy_imgui_window_wrapped_panels(PanelSpace space) const;
 
         float draw_panels_direct(PanelSpace space, float x, float y, float w, float max_h,
                                  const PanelDrawContext& ctx,
@@ -202,35 +206,35 @@ namespace lfs::vis::gui {
                                    const PanelDrawContext& ctx,
                                    float clip_y_min = -1.0f, float clip_y_max = -1.0f,
                                    const PanelInputState* input = nullptr);
-        float draw_single_panel_direct(const std::string& idname, float x, float y, float w, float h,
+        float draw_single_panel_direct(const std::string& id, float x, float y, float w, float h,
                                        const PanelDrawContext& ctx,
                                        float clip_y_min = -1.0f, float clip_y_max = -1.0f,
                                        const PanelInputState* input = nullptr);
-        float preload_single_panel_direct(const std::string& idname, float w, float h,
+        float preload_single_panel_direct(const std::string& id, float w, float h,
                                           const PanelDrawContext& ctx,
                                           float clip_y_min = -1.0f, float clip_y_max = -1.0f,
                                           const PanelInputState* input = nullptr);
-        float preload_child_panels_direct(const std::string& parent_idname, float w, float h,
+        float preload_child_panels_direct(const std::string& parent_id, float w, float h,
                                           const PanelDrawContext& ctx,
                                           float clip_y_min = -1.0f, float clip_y_max = -1.0f,
                                           const PanelInputState* input = nullptr);
-        float draw_child_panels_direct(const std::string& parent_idname, float x, float y, float w, float h,
+        float draw_child_panels_direct(const std::string& parent_id, float x, float y, float w, float h,
                                        const PanelDrawContext& ctx,
                                        float clip_y_min = -1.0f, float clip_y_max = -1.0f,
                                        const PanelInputState* input = nullptr);
 
         std::vector<PanelSummary> get_panels_for_space(PanelSpace space);
         std::vector<std::string> get_panel_names(PanelSpace space) const;
-        std::optional<PanelSummary> get_panel(const std::string& idname);
+        std::optional<PanelDetails> get_panel(const std::string& id);
         bool isPositionOverFloatingPanel(double x, double y) const;
-        void set_panel_enabled(const std::string& idname, bool enabled);
-        void set_panel_disabled_override(const std::string& idname);
-        bool is_panel_enabled(const std::string& idname) const;
+        void set_panel_enabled(const std::string& id, bool enabled);
+        void set_panel_disabled_override(const std::string& id);
+        bool is_panel_enabled(const std::string& id) const;
         bool needsAnimationFrame() const;
-        bool set_panel_label(const std::string& idname, const std::string& new_label);
-        bool set_panel_order(const std::string& idname, int new_order);
-        bool set_panel_space(const std::string& idname, PanelSpace new_space);
-        bool set_panel_parent(const std::string& idname, const std::string& parent_idname);
+        bool set_panel_label(const std::string& id, const std::string& new_label);
+        bool set_panel_order(const std::string& id, int new_order);
+        bool set_panel_space(const std::string& id, PanelSpace new_space);
+        bool set_panel_parent(const std::string& id, const std::string& parent_id);
         void invalidate_poll_cache(PollDependency changed = PollDependency::ALL);
 
     private:

@@ -39,6 +39,12 @@
     font-size: 11dp;
 }
 
+.im-progress {
+    position: relative;
+    width: 100%;
+    margin: 2dp 0;
+}
+
 .im-label {
     font-size: 10dp;
     padding: 0 0 0 2dp;

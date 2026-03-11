@@ -8,7 +8,7 @@ from typing import List
 
 import lichtfeld as lf
 
-from .types import RmlPanel
+from .types import Panel
 
 TRANSLATE_STEP = 0.01
 TRANSLATE_STEP_FAST = 0.1
@@ -76,13 +76,13 @@ class TransformPanelState:
         self.multi_transforms_before = []
 
 
-class TransformControlsPanel(RmlPanel):
-    idname = "lfs.transform_controls"
+class TransformControlsPanel(Panel):
+    id = "lfs.transform_controls"
     label = "Transform"
-    space = "MAIN_PANEL_TAB"
+    space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 120
-    rml_template = "rmlui/transform_controls.rml"
-    rml_height_mode = "content"
+    template = "rmlui/transform_controls.rml"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     update_interval_ms = 16
 
     def __init__(self):
@@ -150,7 +150,7 @@ class TransformControlsPanel(RmlPanel):
 
         self._handle = model.get_handle()
 
-    def on_load(self, doc):
+    def on_mount(self, doc):
         self._doc = doc
 
         header = doc.get_element_by_id("hdr-transform")
@@ -607,7 +607,7 @@ class TransformControlsPanel(RmlPanel):
 
 
 def register():
-    lf.ui.register_rml_panel(TransformControlsPanel)
+    lf.register_class(TransformControlsPanel)
     lf.ui.set_panel_parent("lfs.transform_controls", "lfs.rendering")
 
 

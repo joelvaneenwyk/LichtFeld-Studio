@@ -1121,6 +1121,8 @@ def register_class(cls: object) -> None:
 def unregister_class(cls: object) -> None:
     """Unregister a class (Panel, Operator, or Menu)"""
 
+PLUGIN_API_VERSION: str = '1.0'
+
 class GizmoEventType(enum.Enum):
     PRESS = 0
 
@@ -1438,7 +1440,7 @@ class OptimizationParams:
         """Active optimization strategy name"""
 
     def set_strategy(self, strategy: str) -> None:
-        """Set active strategy ('mcmc' or 'adc')"""
+        """Set active strategy ('mcmc', 'adc', or 'igs+')"""
 
     @property
     def headless(self) -> bool:
@@ -1582,6 +1584,13 @@ class OptimizationParams:
 
     @undistort.setter
     def undistort(self, arg: bool, /) -> None: ...
+
+    @property
+    def revised_opacity(self) -> bool:
+        """Use revised opacity calculation for ADC densification"""
+
+    @revised_opacity.setter
+    def revised_opacity(self, arg: bool, /) -> None: ...
 
     @property
     def save_steps(self) -> list[int]:

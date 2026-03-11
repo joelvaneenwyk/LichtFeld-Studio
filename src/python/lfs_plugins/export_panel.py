@@ -7,7 +7,8 @@ from typing import Set
 from enum import IntEnum
 
 import lichtfeld as lf
-from .types import RmlPanel
+from . import rml_widgets
+from .types import Panel
 
 
 class ExportFormat(IntEnum):
@@ -29,14 +30,14 @@ def _xml_unescape(text):
     return html.unescape(text or "")
 
 
-class ExportPanel(RmlPanel):
-    idname = "lfs.export"
+class ExportPanel(Panel):
+    id = "lfs.export"
     label = "Export"
-    space = "FLOATING"
+    space = lf.ui.PanelSpace.FLOATING
     order = 10
-    rml_template = "rmlui/export_panel.rml"
-    rml_height_mode = "content"
-    initial_width = 320
+    template = "rmlui/export_panel.rml"
+    height_mode = lf.ui.PanelHeightMode.CONTENT
+    size = (320, 0)
     update_interval_ms = 100
 
     def __init__(self):
@@ -99,8 +100,8 @@ class ExportPanel(RmlPanel):
 
     # ── Lifecycle ─────────────────────────────────────────────
 
-    def on_load(self, doc):
-        super().on_load(doc)
+    def on_mount(self, doc):
+        super().on_mount(doc)
         self._exporting = False
         self._last_progress = -1.0
         self._cached_export_state = {}
@@ -210,16 +211,9 @@ class ExportPanel(RmlPanel):
 
         return False
 
-    def _find_ancestor_with_attribute(self, element, attribute, stop=None):
-        while element is not None and element != stop:
-            if element.has_attribute(attribute):
-                return element
-            element = element.parent()
-        return None
-
     def _get_checkbox_from_event(self, event):
         container = event.current_target()
-        target = self._find_ancestor_with_attribute(event.target(), "data-node-name", container)
+        target = rml_widgets.find_ancestor_with_attribute(event.target(), "data-node-name", container)
         if target is None:
             return None, None
 
@@ -273,7 +267,7 @@ class ExportPanel(RmlPanel):
 
     def _on_format_click(self, ev):
         container = ev.current_target()
-        target = self._find_ancestor_with_attribute(ev.target(), "data-format-idx", container)
+        target = rml_widgets.find_ancestor_with_attribute(ev.target(), "data-format-idx", container)
         if target is None:
             return
 

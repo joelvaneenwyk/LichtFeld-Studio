@@ -23,6 +23,8 @@ CURATED_PLUGIN_URLS: Tuple[str, ...] = (
     "https://github.com/shadygm/Lichtfeld-ml-sharp-Plugin",
     "https://github.com/jacobvanbeets/360_record",
     "https://github.com/jacobvanbeets/lichtfeld-depthmap-plugin",
+    "https://github.com/jacobvanbeets/splat-vr-viewer",
+    "https://github.com/jacobvanbeets/lichtfeld-measurement-plugin",
 )
 
 

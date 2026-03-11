@@ -154,10 +154,9 @@ class TestExamplesImports:
         ids=[p.stem for p in EXAMPLE_FILES],
     )
     def test_no_wrong_import_patterns(self, path):
-        """Must not use lf.ui.Panel, lf.ui.register_panel, or similar wrong patterns."""
+        """Examples must use the canonical panel API and avoid retired helpers."""
         source = path.read_text()
         bad_patterns = [
-            "lf.ui.Panel",
             "lf.ui.Operator",
             "lf.ui.register_panel",
             "lf.ui.register_operator",
@@ -295,7 +294,7 @@ class TestPanelAPI:
 
         class TestPanel(Panel):
             label = "Test"
-            space = "SIDE_PANEL"
+            space = "MAIN_PANEL_TAB"
             order = 10
 
             def draw(self, layout):
@@ -971,7 +970,7 @@ class TestMarkdownDocs:
 
     def test_getting_started_references_correct_imports(self):
         content = (PROJECT_ROOT / "docs" / "plugins" / "getting-started.md").read_text()
-        assert "from lfs_plugins.types import Panel" in content
+        assert "lf.ui.Panel" in content
         assert "from lfs_plugins.types import Operator" in content
         assert "lf.register_class" in content
         assert "lf.unregister_class" in content
@@ -1007,7 +1006,6 @@ class TestMarkdownDocs:
         for md in (PROJECT_ROOT / "docs" / "plugins").glob("*.md"):
             content = md.read_text()
             bad_patterns = [
-                "lf.ui.Panel",
                 "lf.ui.register_panel",
                 "bare `draw(self)`",
             ]

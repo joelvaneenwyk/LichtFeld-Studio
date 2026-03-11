@@ -6,7 +6,8 @@ import math
 
 import lichtfeld as lf
 
-from .types import RmlPanel
+from .types import Panel
+from .rml_keys import KI_DELETE, KI_ESCAPE, KI_F2, KI_RETURN
 from .ui.state import AppState
 
 TREE_ROW_HEIGHT_DP = 20
@@ -76,11 +77,6 @@ NODE_TYPE_ICON_PATH = {
     if icon_name
 }
 
-KI_RETURN = 72
-KI_ESCAPE = 81
-KI_DELETE = 99
-KI_F2 = 108
-
 EASING_TYPES = [
     (0, "scene.keyframe_easing.linear"),
     (1, "scene.keyframe_easing.ease_in"),
@@ -109,12 +105,12 @@ def _can_drag(node_type, parent_is_dataset):
     return node_type in DRAGGABLE_TYPES and not parent_is_dataset
 
 
-class ScenePanel(RmlPanel):
-    idname = "lfs.scene"
+class ScenePanel(Panel):
+    id = "lfs.scene"
     label = "Scene"
-    space = "SCENE_HEADER"
+    space = lf.ui.PanelSpace.SCENE_HEADER
     order = 0
-    rml_template = "rmlui/scene_tree.rml"
+    template = "rmlui/scene_tree.rml"
     update_interval_ms = 16
 
     def __init__(self):
@@ -182,7 +178,7 @@ class ScenePanel(RmlPanel):
         model.bind_record_list("context_menu_entries")
         self._handle = model.get_handle()
 
-    def on_load(self, doc):
+    def on_mount(self, doc):
         self.doc = doc
         self._last_lang = lf.ui.get_current_language()
         self.container = doc.get_element_by_id("tree-container")

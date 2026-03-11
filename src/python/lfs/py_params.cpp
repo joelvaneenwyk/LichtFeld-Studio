@@ -1031,8 +1031,8 @@ namespace lfs::python {
             .def(
                 "set_strategy",
                 [](PyOptimizationParams& /*self*/, const std::string& strategy) {
-                    if (strategy != "mcmc" && strategy != "adc") {
-                        throw std::invalid_argument("Strategy must be 'mcmc' or 'adc'");
+                    if (strategy != "mcmc" && strategy != "adc" && strategy != "igs+") {
+                        throw std::invalid_argument("Strategy must be 'mcmc', 'adc', or 'igs+'");
                     }
                     auto* pm = get_parameter_manager();
                     if (pm) {
@@ -1040,7 +1040,7 @@ namespace lfs::python {
                     }
                 },
                 nb::arg("strategy"),
-                "Set active strategy ('mcmc' or 'adc')")
+                "Set active strategy ('mcmc', 'adc', or 'igs+')")
             .def_prop_ro(
                 "headless", [](PyOptimizationParams& self) { return self.params().headless; },
                 "Whether running without visualization")
@@ -1188,6 +1188,11 @@ namespace lfs::python {
                 [](PyOptimizationParams& self) { return self.params().undistort; },
                 [](PyOptimizationParams&, bool v) { modify_params([v](auto& p) { p.undistort = v; }); },
                 "Undistort images on-the-fly before training")
+            .def_prop_rw(
+                "revised_opacity",
+                [](PyOptimizationParams& self) { return self.params().revised_opacity; },
+                [](PyOptimizationParams&, bool v) { modify_params([v](auto& p) { p.revised_opacity = v; }); },
+                "Use revised opacity calculation for ADC densification")
             .def_prop_ro(
                 "save_steps",
                 [](PyOptimizationParams& self) -> std::vector<size_t> {
