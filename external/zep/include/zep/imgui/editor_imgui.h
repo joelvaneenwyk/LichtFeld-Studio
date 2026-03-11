@@ -165,64 +165,51 @@ public:
                 }
             }
 
-            if (ImGui::IsKeyPressed(ImGuiKey_1))
-            {
-                SetGlobalMode(ZepMode_Standard::StaticName());
-                handled = true;
-            }
-            else if (ImGui::IsKeyPressed(ImGuiKey_2))
-            {
-                SetGlobalMode(ZepMode_Vim::StaticName());
-                handled = true;
-            }
-            else
-            {
-                static constexpr std::pair<ImGuiKey, char> ctrlDigits[] = {
-                    { ImGuiKey_0, '0' },
-                    { ImGuiKey_1, '1' },
-                    { ImGuiKey_2, '2' },
-                    { ImGuiKey_3, '3' },
-                    { ImGuiKey_4, '4' },
-                    { ImGuiKey_5, '5' },
-                    { ImGuiKey_6, '6' },
-                    { ImGuiKey_7, '7' },
-                    { ImGuiKey_8, '8' },
-                    { ImGuiKey_9, '9' },
-                };
-                static constexpr std::pair<ImGuiKey, char> ctrlLetters[] = {
-                    { ImGuiKey_A, 'a' }, { ImGuiKey_B, 'b' }, { ImGuiKey_C, 'c' },
-                    { ImGuiKey_D, 'd' }, { ImGuiKey_E, 'e' }, { ImGuiKey_F, 'f' },
-                    { ImGuiKey_G, 'g' }, { ImGuiKey_H, 'h' }, { ImGuiKey_I, 'i' },
-                    { ImGuiKey_J, 'j' }, { ImGuiKey_K, 'k' }, { ImGuiKey_L, 'l' },
-                    { ImGuiKey_M, 'm' }, { ImGuiKey_N, 'n' }, { ImGuiKey_O, 'o' },
-                    { ImGuiKey_P, 'p' }, { ImGuiKey_Q, 'q' }, { ImGuiKey_R, 'r' },
-                    { ImGuiKey_S, 's' }, { ImGuiKey_T, 't' }, { ImGuiKey_U, 'u' },
-                    { ImGuiKey_V, 'v' }, { ImGuiKey_W, 'w' }, { ImGuiKey_X, 'x' },
-                    { ImGuiKey_Y, 'y' }, { ImGuiKey_Z, 'z' },
-                };
+            static constexpr std::pair<ImGuiKey, char> ctrlDigits[] = {
+                { ImGuiKey_0, '0' },
+                { ImGuiKey_1, '1' },
+                { ImGuiKey_2, '2' },
+                { ImGuiKey_3, '3' },
+                { ImGuiKey_4, '4' },
+                { ImGuiKey_5, '5' },
+                { ImGuiKey_6, '6' },
+                { ImGuiKey_7, '7' },
+                { ImGuiKey_8, '8' },
+                { ImGuiKey_9, '9' },
+            };
+            static constexpr std::pair<ImGuiKey, char> ctrlLetters[] = {
+                { ImGuiKey_A, 'a' }, { ImGuiKey_B, 'b' }, { ImGuiKey_C, 'c' },
+                { ImGuiKey_D, 'd' }, { ImGuiKey_E, 'e' }, { ImGuiKey_F, 'f' },
+                { ImGuiKey_G, 'g' }, { ImGuiKey_H, 'h' }, { ImGuiKey_I, 'i' },
+                { ImGuiKey_J, 'j' }, { ImGuiKey_K, 'k' }, { ImGuiKey_L, 'l' },
+                { ImGuiKey_M, 'm' }, { ImGuiKey_N, 'n' }, { ImGuiKey_O, 'o' },
+                { ImGuiKey_P, 'p' }, { ImGuiKey_Q, 'q' }, { ImGuiKey_R, 'r' },
+                { ImGuiKey_S, 's' }, { ImGuiKey_T, 't' }, { ImGuiKey_U, 'u' },
+                { ImGuiKey_V, 'v' }, { ImGuiKey_W, 'w' }, { ImGuiKey_X, 'x' },
+                { ImGuiKey_Y, 'y' }, { ImGuiKey_Z, 'z' },
+            };
 
-                for (auto& ctrlDigit : ctrlDigits)
+            for (auto& ctrlDigit : ctrlDigits)
+            {
+                if (ImGui::IsKeyPressed(ctrlDigit.first))
                 {
-                    if (ImGui::IsKeyPressed(ctrlDigit.first))
-                    {
-                        pBuffer->GetMode()->AddKeyPress(ctrlDigit.second, mod);
-                        handled = true;
-                    }
-                }
-                for (auto& ctrlLetter : ctrlLetters)
-                {
-                    if (ImGui::IsKeyPressed(ctrlLetter.first))
-                    {
-                        pBuffer->GetMode()->AddKeyPress(ctrlLetter.second, mod);
-                        handled = true;
-                    }
-                }
-
-                if (ImGui::IsKeyPressed(ImGuiKey_Space))
-                {
-                    pBuffer->GetMode()->AddKeyPress(' ', mod);
+                    pBuffer->GetMode()->AddKeyPress(ctrlDigit.second, mod);
                     handled = true;
                 }
+            }
+            for (auto& ctrlLetter : ctrlLetters)
+            {
+                if (ImGui::IsKeyPressed(ctrlLetter.first))
+                {
+                    pBuffer->GetMode()->AddKeyPress(ctrlLetter.second, mod);
+                    handled = true;
+                }
+            }
+
+            if (ImGui::IsKeyPressed(ImGuiKey_Space))
+            {
+                pBuffer->GetMode()->AddKeyPress(' ', mod);
+                handled = true;
             }
         }
 

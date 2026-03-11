@@ -471,8 +471,7 @@ namespace lfs::vis::editor {
                   std::filesystem::path(PROJECT_ROOT_PATH) / "external" / "zep",
                   Zep::NVec2f(1.0f),
                   Zep::ZepEditorFlags::DisableThreads)),
-              host(*this),
-              lsp(std::make_unique<PythonLspClient>()) {
+              host(*this) {
             editor->RegisterCallback(&host);
             editor->GetDisplay().SetPixelScale(Zep::NVec2f(1.0f));
             editor->SetGlobalMode(Zep::ZepMode_Standard::StaticName());
@@ -497,7 +496,6 @@ namespace lfs::vis::editor {
             }
 
             applyTheme(theme());
-            document_version = lsp->updateDocument("");
             semantic_highlight_palette_signature = semanticPaletteSignature();
         }
 
@@ -582,7 +580,25 @@ namespace lfs::vis::editor {
             editor->RequestRefresh();
         }
 
+        void ensureLspStarted() {
+            if (lsp != nullptr) {
+                return;
+            }
+
+            lsp = std::make_unique<PythonLspClient>();
+            document_version = lsp->updateDocument(getText());
+            pending_semantic_tokens.reset();
+            semantic_tokens_request_pending = true;
+            semantic_full_refresh_required = true;
+            semantic_dirty_range.clear();
+            last_text_change_at = Clock::now();
+            semantic_tokens_idle_delay = SEMANTIC_TOKENS_BOUNDARY_DELAY;
+            next_semantic_tokens_request_at = last_text_change_at;
+            last_semantic_tokens_requested_version = -1;
+        }
+
         PythonLspClient& ensureLsp() {
+            ensureLspStarted();
             return *lsp;
         }
 
@@ -1699,6 +1715,7 @@ namespace lfs::vis::editor {
 
     bool PythonEditor::render(const ImVec2& size) {
         execute_requested_ = false;
+        impl_->ensureLspStarted();
         impl_->applyTheme(theme());
         if (!impl_->semantic_highlights.tokens.empty() &&
             impl_->semantic_highlight_palette_signature != impl_->semanticPaletteSignature()) {
