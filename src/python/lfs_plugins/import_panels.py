@@ -118,6 +118,7 @@ class DatasetImportPanel(_ImportDialogPanel):
 
         model.bind_event("browse_output", self._on_browse_output)
         model.bind_event("browse_init", self._on_browse_init)
+        model.bind_event("do_load", self._on_do_load)
         model.bind_event("do_cancel", self._on_do_cancel)
 
         self._handle = model.get_handle()
@@ -262,6 +263,7 @@ class ResumeCheckpointPanel(_ImportDialogPanel):
 
         model.bind_event("browse_dataset", self._on_browse_dataset)
         model.bind_event("browse_output", self._on_browse_output)
+        model.bind_event("do_load", self._on_do_load)
         model.bind_event("do_cancel", self._on_do_cancel)
 
         self._handle = model.get_handle()

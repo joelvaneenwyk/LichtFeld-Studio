@@ -50,8 +50,8 @@
 
     <div class="impdlg-buttons">
       <button type="button" class="btn btn--secondary impdlg-action-btn" data-event-click="do_cancel">@tr:common.cancel</button>
-      <button type="submit" class="btn btn--primary impdlg-action-btn"
-              data-attrif-disabled="!can_load">@tr:common.load</button>
+      <button type="button" class="btn btn--primary impdlg-action-btn"
+              data-attrif-disabled="!can_load" data-event-click="do_load">@tr:common.load</button>
     </div>
     <input class="submit-proxy" type="submit" />
   </form>

@@ -33,7 +33,7 @@
     <form id="manual-install-form">
       <div class="mp-manual-row">
         <input type="text" id="manual-url-input" class="mp-url-input" data-value="manual_url" />
-        <button id="btn-install-url" type="submit" class="btn btn--success mp-install-btn">@tr:plugin_manager.button.install_plugin</button>
+        <button id="btn-install-url" type="button" class="btn btn--success mp-install-btn" data-event-click="do_install_url">@tr:plugin_manager.button.install_plugin</button>
       </div>
       <div id="manual-feedback" class="card-feedback hidden">
         <progress id="manual-feedback-progress" class="card-progress hidden" max="1" value="0" />

@@ -230,7 +230,7 @@ class TrainingPanel(Panel):
     space = lf.ui.PanelSpace.MAIN_PANEL_TAB
     order = 20
     template = "rmlui/training.rml"
-    height_mode = lf.ui.PanelHeightMode.FILL
+    height_mode = lf.ui.PanelHeightMode.CONTENT
     update_interval_ms = 16
 
     def __init__(self):
