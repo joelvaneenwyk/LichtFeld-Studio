@@ -305,7 +305,7 @@ namespace lfs::vis::gui {
                 focused->Blur();
         }
 
-        if (inside_panel || hasFocusedKeyboardTarget(rml_context_->GetFocusElement())) {
+        if (hasFocusedKeyboardTarget(rml_context_->GetFocusElement())) {
             const int mods = sdlModsToRml(input.key_ctrl, input.key_shift,
                                           input.key_alt, input.key_super);
             for (const int sc : input.keys_pressed) {

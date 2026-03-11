@@ -3,6 +3,7 @@
 """Training Panel - RmlUI with native data binding."""
 
 import os
+import re
 import time
 
 import lichtfeld as lf
@@ -148,14 +149,14 @@ NUM_PROP_DEFS = [
     ("iterations", int, "%d", 1, None, 100),
     ("max_cap", int, "%d", 1, None, 100000),
     ("steps_scaler", float, "%.2f", 0.01, None, 0.1),
-    ("means_lr", float, "%.6f", 0, None, 0.00001),
-    ("shs_lr", float, "%.4f", 0, None, 0.001),
+    ("means_lr", float, "%.6f", 0, None, 0.000001),
+    ("shs_lr", float, "%.4f", 0, None, 0.0001),
     ("opacity_lr", float, "%.4f", 0, None, 0.001),
-    ("scaling_lr", float, "%.4f", 0, None, 0.001),
-    ("rotation_lr", float, "%.4f", 0, None, 0.001),
+    ("scaling_lr", float, "%.4f", 0, None, 0.0001),
+    ("rotation_lr", float, "%.4f", 0, None, 0.0001),
     ("refine_every", int, "%d", 1, None, 10),
     ("start_refine", int, "%d", 0, None, 100),
-    ("stop_refine", int, "%d", 0, None, 100),
+    ("stop_refine", int, "%d", 0, None, 1000),
     ("grad_threshold", float, "%.6f", 0, None, 0.00001),
     ("reset_every", int, "%d", 1, None, 100),
     ("sh_degree_interval", int, "%d", 1, None, 100),
@@ -167,7 +168,7 @@ NUM_PROP_DEFS = [
     ("scale_reg", float, "%.4f", 0, None, 0.001),
     ("tv_loss_weight", float, "%.1f", 0, None, 0.5),
     ("init_scaling", float, "%.3f", 0.001, None, 0.01),
-    ("init_num_pts", int, "%d", 1, None, 1000),
+    ("init_num_pts", int, "%d", 1, None, 10000),
     ("init_extent", float, "%.1f", 0.1, None, 0.5),
     ("min_opacity", float, "%.4f", 0, None, 0.001),
     ("prune_opacity", float, "%.4f", 0, None, 0.001),
@@ -175,14 +176,49 @@ NUM_PROP_DEFS = [
     ("grow_scale2d", float, "%.3f", 0, None, 0.01),
     ("prune_scale3d", float, "%.3f", 0, None, 0.01),
     ("prune_scale2d", float, "%.3f", 0, None, 0.01),
-    ("pause_refine_after_reset", int, "%d", 0, None, 10),
-    ("sparsify_steps", int, "%d", 1, None, 100),
+    ("pause_refine_after_reset", int, "%d", 0, None, 100),
+    ("sparsify_steps", int, "%d", 1, None, 1000),
     ("init_rho", float, "%.4f", 0, None, 0.001),
     ("ppisp_controller_lr", float, "%.5f", 0, None, 0.0001),
 ]
 
 _NUM_PROP_LOOKUP = {name: (dtype, fmt, min_v, max_v, step)
                     for name, dtype, fmt, min_v, max_v, step in NUM_PROP_DEFS}
+
+_INT_INPUT_RE = re.compile(r"^\s*[+-]?\d[\d,]*\s*$")
+
+_FLOAT_INPUT_RE = re.compile(
+    r"""
+    ^\s*
+    [+-]?
+    (?:
+        (?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d*)?
+        |
+        \.\d+
+    )
+    (?:[eE][+-]?\d+)?
+    \s*$
+    """,
+    re.VERBOSE,
+)
+
+
+def _fmt_num(val, dtype, fmt):
+    if dtype == int:
+        return f"{int(val):,}"
+    return fmt % val
+
+
+def _parse_num(val_str, dtype):
+    value = str(val_str).strip()
+    if dtype == int:
+        if not _INT_INPUT_RE.fullmatch(value):
+            raise ValueError(f"invalid integer input: {val_str!r}")
+        return value.replace(",", "")
+
+    if not _FLOAT_INPUT_RE.fullmatch(value):
+        raise ValueError(f"invalid numeric input: {val_str!r}")
+    return value.replace(",", "")
 
 SLIDER_PROPS = ["lambda_dssim", "init_opacity", "prune_ratio"]
 
@@ -440,54 +476,146 @@ class TrainingPanel(Panel):
     def _bind_num_props(self, model, p, d):
         for prop, dtype, fmt, min_v, max_v, _step in NUM_PROP_DEFS:
             key = f"{prop}_str"
-            self._text_bufs[key] = ""
+            self._text_bufs[key] = None
 
-            def getter(k=key, pr=prop, f=fmt):
-                if not self._text_bufs[k]:
-                    self._text_bufs[k] = f % getattr(p(), pr, 0) if p() and p().has_params() else ""
+            def getter(k=key, pr=prop, dt=dtype, f=fmt):
+                if self._text_bufs[k] is None:
+                    self._text_bufs[k] = _fmt_num(getattr(p(), pr, 0), dt, f) if p() and p().has_params() else ""
                 return self._text_bufs[k]
 
-            def setter(v, k=key, pr=prop, dt=dtype, mn=min_v, mx=max_v):
-                self._text_bufs[k] = str(v)
-                self._set_num_prop(pr, v, dt, mn, mx)
+            def setter(v, k=key, pr=prop, dt=dtype, f=fmt, mn=min_v, mx=max_v):
+                value = str(v)
+                self._text_bufs[k] = value
+                if self._set_num_prop(pr, value, dt, mn, mx):
+                    self._text_bufs[k] = _fmt_num(getattr(p(), pr, 0), dt, f) if p() and p().has_params() else ""
+                    self._mark_text_buf_dirty(k)
+                elif not value.strip():
+                    self._text_bufs[k] = None
+                    self._mark_text_buf_dirty(k)
 
             model.bind(key, getter, setter)
 
-        self._text_bufs["ppisp_activation_step_str"] = ""
+        self._text_bufs["ppisp_activation_step_str"] = None
+        def ppisp_activation_step_getter():
+            if self._text_bufs["ppisp_activation_step_str"] is None:
+                self._text_bufs["ppisp_activation_step_str"] = (
+                    f"{p().ppisp_controller_activation_step:,}"
+                    if p() and p().has_params() and p().ppisp_controller_activation_step >= 0
+                    else ""
+                )
+            return self._text_bufs["ppisp_activation_step_str"]
+
+        def ppisp_activation_step_setter(v):
+            value = str(v)
+            self._text_bufs["ppisp_activation_step_str"] = value
+            if self._set_ppisp_activation_step(value):
+                self._text_bufs["ppisp_activation_step_str"] = (
+                    f"{p().ppisp_controller_activation_step:,}"
+                    if p() and p().has_params() and p().ppisp_controller_activation_step >= 0
+                    else ""
+                )
+                self._mark_text_buf_dirty("ppisp_activation_step_str")
+            elif not value.strip():
+                self._text_bufs["ppisp_activation_step_str"] = None
+                self._mark_text_buf_dirty("ppisp_activation_step_str")
+
         model.bind("ppisp_activation_step_str",
-                    lambda: self._text_bufs["ppisp_activation_step_str"] or (
-                        str(p().ppisp_controller_activation_step)
-                        if p() and p().has_params() and p().ppisp_controller_activation_step >= 0
-                        else ""),
-                    lambda v: (self._text_bufs.__setitem__("ppisp_activation_step_str", str(v)),
-                               self._set_ppisp_activation_step(v)))
+                    ppisp_activation_step_getter,
+                    ppisp_activation_step_setter)
 
-        self._text_bufs["max_width_str"] = ""
+        self._text_bufs["max_width_str"] = None
+        def max_width_getter():
+            if self._text_bufs["max_width_str"] is None:
+                self._text_bufs["max_width_str"] = (
+                    f"{d().max_width:,}" if d() and d().has_params() else ""
+                )
+            return self._text_bufs["max_width_str"]
+
+        def max_width_setter(v):
+            value = str(v)
+            self._text_bufs["max_width_str"] = value
+            if self._set_max_width(value):
+                self._text_bufs["max_width_str"] = (
+                    f"{d().max_width:,}" if d() and d().has_params() else ""
+                )
+                self._mark_text_buf_dirty("max_width_str")
+            elif not value.strip():
+                self._text_bufs["max_width_str"] = None
+                self._mark_text_buf_dirty("max_width_str")
+
         model.bind("max_width_str",
-                    lambda: self._text_bufs["max_width_str"] or (
-                        "%d" % d().max_width if d() and d().has_params() else ""),
-                    lambda v: (self._text_bufs.__setitem__("max_width_str", str(v)),
-                               self._set_max_width(v)))
+                    max_width_getter,
+                    max_width_setter)
 
-        self._text_bufs["new_step_str"] = ""
+        self._text_bufs["new_step_str"] = None
+        def new_step_getter():
+            if self._text_bufs["new_step_str"] is None:
+                self._text_bufs["new_step_str"] = f"{self._new_save_step:,}"
+            return self._text_bufs["new_step_str"]
+
+        def new_step_setter(v):
+            value = str(v)
+            self._text_bufs["new_step_str"] = value
+            if self._set_new_step_val(value):
+                self._text_bufs["new_step_str"] = f"{self._new_save_step:,}"
+                self._mark_text_buf_dirty("new_step_str")
+            elif not value.strip():
+                self._text_bufs["new_step_str"] = None
+                self._mark_text_buf_dirty("new_step_str")
+
         model.bind("new_step_str",
-                    lambda: self._text_bufs["new_step_str"] or str(self._new_save_step),
-                    lambda v: (self._text_bufs.__setitem__("new_step_str", str(v)),
-                               self._set_new_step_val(v)))
+                    new_step_getter,
+                    new_step_setter)
+
+    def _mark_text_buf_dirty(self, key):
+        if self._handle:
+            self._handle.dirty(key)
+
+    def _canonical_text_buf_value(self, key):
+        p = lf.optimization_params()
+        d = lf.dataset_params()
+
+        if key.endswith("_str"):
+            prop = key[:-4]
+            entry = _NUM_PROP_LOOKUP.get(prop)
+            if entry:
+                dtype, fmt, _min_v, _max_v, _step = entry
+                return _fmt_num(getattr(p, prop, 0), dtype, fmt) if p and p.has_params() else ""
+
+        if key == "ppisp_activation_step_str":
+            if p and p.has_params() and p.ppisp_controller_activation_step >= 0:
+                return f"{p.ppisp_controller_activation_step:,}"
+            return ""
+
+        if key == "max_width_str":
+            return f"{d.max_width:,}" if d and d.has_params() else ""
+
+        if key == "new_step_str":
+            return f"{self._new_save_step:,}"
+
+        return None
+
+    def _commit_number_input_key(self, key):
+        canonical = self._canonical_text_buf_value(key)
+        if canonical is None:
+            return
+        if self._text_bufs.get(key) != canonical:
+            self._text_bufs[key] = canonical
+            self._mark_text_buf_dirty(key)
 
     def _sync_text_bufs(self):
         p = lf.optimization_params()
         d = lf.dataset_params()
-        for prop, _dtype, fmt, _min_v, _max_v, _step in NUM_PROP_DEFS:
+        for prop, dtype, fmt, _min_v, _max_v, _step in NUM_PROP_DEFS:
             key = f"{prop}_str"
-            self._text_bufs[key] = fmt % getattr(p, prop, 0) if p and p.has_params() else ""
+            self._text_bufs[key] = _fmt_num(getattr(p, prop, 0), dtype, fmt) if p and p.has_params() else ""
         if p and p.has_params():
             step = p.ppisp_controller_activation_step
-            self._text_bufs["ppisp_activation_step_str"] = str(step) if step >= 0 else ""
+            self._text_bufs["ppisp_activation_step_str"] = f"{step:,}" if step >= 0 else ""
         else:
             self._text_bufs["ppisp_activation_step_str"] = ""
-        self._text_bufs["max_width_str"] = "%d" % d.max_width if d and d.has_params() else ""
-        self._text_bufs["new_step_str"] = str(self._new_save_step)
+        self._text_bufs["max_width_str"] = f"{d.max_width:,}" if d and d.has_params() else ""
+        self._text_bufs["new_step_str"] = f"{self._new_save_step:,}"
 
     def _bind_slider_props(self, model, p):
         for prop in SLIDER_PROPS:
@@ -560,7 +688,7 @@ class TrainingPanel(Panel):
         model.bind_func("error_message", _error_message)
 
         model.bind_func("save_steps_display",
-                         lambda: ", ".join(str(s) for s in p().save_steps)
+                         lambda: ", ".join(f"{s:,}" for s in p().save_steps)
                                  if p() and p().has_params() else "")
 
     def _bind_display(self, model, p, d):
@@ -597,6 +725,9 @@ class TrainingPanel(Panel):
         if body:
             body.add_event_listener("click", self._on_body_click)
             body.add_event_listener("mouseup", self._on_step_mouseup)
+        for el in doc.query_selector_all("input.number-input"):
+            el.add_event_listener("change", self._on_number_input_change)
+            el.add_event_listener("blur", self._on_number_input_blur)
         self._loss_graph_el = doc.get_element_by_id("loss-graph-el")
         self._sync_section_states()
 
@@ -677,7 +808,7 @@ class TrainingPanel(Panel):
         steps = list(params.save_steps)
         if steps != self._last_save_steps:
             self._last_save_steps = steps[:]
-            self._handle.update_string_list("save_steps_list", [str(s) for s in steps])
+            self._handle.update_string_list("save_steps_list", [f"{s:,}" for s in steps])
             self._handle.dirty("no_save_steps")
             self._handle.dirty("has_save_steps")
             self._handle.dirty("save_steps_display")
@@ -872,11 +1003,11 @@ class TrainingPanel(Panel):
     def _set_num_prop(self, prop, val_str, dtype, min_v, max_v):
         params = lf.optimization_params()
         if not params or not params.has_params():
-            return
+            return False
         try:
-            val = dtype(val_str)
+            val = dtype(_parse_num(str(val_str), dtype))
         except (ValueError, TypeError):
-            return
+            return False
         if min_v is not None:
             val = max(val, dtype(min_v))
         if max_v is not None:
@@ -888,32 +1019,37 @@ class TrainingPanel(Panel):
             setattr(params, prop, val)
         else:
             params.set(prop, val)
+        return True
 
     def _set_ppisp_activation_step(self, val_str):
         params = lf.optimization_params()
         if not params or not params.has_params():
-            return
+            return False
         try:
-            params.ppisp_controller_activation_step = max(1, int(val_str))
+            params.ppisp_controller_activation_step = max(1, int(_parse_num(str(val_str), int)))
         except (ValueError, TypeError):
-            pass
+            return False
+        return True
 
     def _set_max_width(self, val_str):
         d = lf.dataset_params()
         if not d or not d.has_params():
-            return
+            return False
         try:
-            val = int(val_str)
+            val = int(_parse_num(str(val_str), int))
             if 0 < val <= 4096:
                 d.max_width = val
+                return True
         except (ValueError, TypeError, RuntimeError):
-            pass
+            return False
+        return False
 
     def _set_new_step_val(self, val_str):
         try:
-            self._new_save_step = max(1, int(val_str))
+            self._new_save_step = max(1, int(_parse_num(str(val_str), int)))
         except (ValueError, TypeError):
-            pass
+            return False
+        return True
 
     def _set_slider_prop(self, prop, val):
         params = lf.optimization_params()
@@ -952,6 +1088,20 @@ class TrainingPanel(Panel):
         self._step_repeat_start = now
         self._step_repeat_last = now
 
+    def _on_number_input_change(self, event):
+        if not event.get_bool_parameter("linebreak", False):
+            return
+        target = event.current_target()
+        if target is None:
+            return
+        self._commit_number_input_key(target.get_attribute("data-value", ""))
+
+    def _on_number_input_blur(self, event):
+        target = event.current_target()
+        if target is None:
+            return
+        self._commit_number_input_key(target.get_attribute("data-value", ""))
+
     def _apply_num_step(self, prop, direction):
         entry = _NUM_PROP_LOOKUP.get(prop)
         if entry:
@@ -966,7 +1116,7 @@ class TrainingPanel(Panel):
             if max_v is not None:
                 new_val = min(new_val, dtype(max_v))
             self._set_num_prop(prop, str(new_val), dtype, min_v, max_v)
-            self._text_bufs[f"{prop}_str"] = fmt % new_val
+            self._text_bufs[f"{prop}_str"] = _fmt_num(new_val, dtype, fmt)
             if self._handle:
                 self._handle.dirty(f"{prop}_str")
             return
@@ -980,7 +1130,7 @@ class TrainingPanel(Panel):
                 return
             new_val = max(1, current + 100 * direction)
             params.ppisp_controller_activation_step = new_val
-            self._text_bufs["ppisp_activation_step_str"] = str(new_val)
+            self._text_bufs["ppisp_activation_step_str"] = f"{new_val:,}"
             if self._handle:
                 self._handle.dirty("ppisp_activation_step_str")
         elif prop == "max_width":
@@ -989,12 +1139,12 @@ class TrainingPanel(Panel):
                 return
             new_val = max(1, min(4096, d.max_width + 16 * direction))
             d.max_width = new_val
-            self._text_bufs["max_width_str"] = str(new_val)
+            self._text_bufs["max_width_str"] = f"{new_val:,}"
             if self._handle:
                 self._handle.dirty("max_width_str")
         elif prop == "new_step":
             self._new_save_step = max(1, self._new_save_step + 100 * direction)
-            self._text_bufs["new_step_str"] = str(self._new_save_step)
+            self._text_bufs["new_step_str"] = f"{self._new_save_step:,}"
             if self._handle:
                 self._handle.dirty("new_step_str")
 

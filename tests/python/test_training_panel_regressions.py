@@ -61,6 +61,39 @@ def _make_signal(value):
     return SimpleNamespace(value=value)
 
 
+class _ParamsStub:
+    def __init__(self):
+        self.iterations = 1234
+        self.means_lr = 0.25
+        self.steps_scaler = 1.0
+        self.ppisp_controller_activation_step = 5678
+
+    def has_params(self):
+        return True
+
+    def apply_step_scaling(self, value):
+        self.steps_scaler = value
+
+    def set(self, prop, value):
+        setattr(self, prop, value)
+
+
+class _DatasetStub:
+    def __init__(self):
+        self.max_width = 2048
+
+    def has_params(self):
+        return True
+
+
+class _ModelStub:
+    def __init__(self):
+        self.bindings = {}
+
+    def bind(self, name, getter, setter):
+        self.bindings[name] = (getter, setter)
+
+
 def test_training_panel_progress_updates_bound_value(training_panel_module, monkeypatch):
     panel = training_panel_module.TrainingPanel()
     panel._handle = _HandleStub()
@@ -138,3 +171,166 @@ def test_training_panel_loss_graph_clears_bound_labels(training_panel_module, mo
         "loss_tick_mid",
         "loss_tick_min",
     ]
+
+
+def test_numeric_parser_normalizes_integer_commas_and_keeps_float_validation(training_panel_module):
+    assert training_panel_module._parse_num("1,234", int) == "1234"
+    assert training_panel_module._parse_num("1,5", int) == "15"
+    assert training_panel_module._parse_num("1,234.5", float) == "1234.5"
+
+    with pytest.raises(ValueError):
+        training_panel_module._parse_num("0,0001", float)
+
+    with pytest.raises(ValueError):
+        training_panel_module._parse_num("1,5", float)
+
+
+def test_integer_commas_are_normalized_while_float_decimal_commas_still_fail(training_panel_module, monkeypatch):
+    params = _ParamsStub()
+    monkeypatch.setattr(
+        training_panel_module,
+        "lf",
+        SimpleNamespace(optimization_params=lambda: params),
+    )
+
+    panel = training_panel_module.TrainingPanel()
+
+    assert panel._set_num_prop("iterations", "1,234", int, 1, None) is True
+    assert params.iterations == 1234
+
+    assert panel._set_num_prop("iterations", "1,5", int, 1, None) is True
+    assert params.iterations == 15
+
+    assert panel._set_num_prop("iterations", "1,0001,00", int, 1, None) is True
+    assert params.iterations == 1000100
+
+    assert panel._set_num_prop("means_lr", "0,0001", float, 0, None) is False
+    assert params.means_lr == 0.25
+
+
+@pytest.mark.parametrize(
+    ("binding_name", "expected_text"),
+    [
+        ("iterations_str", "1,234"),
+        ("ppisp_activation_step_str", "5,678"),
+        ("max_width_str", "2,048"),
+        ("new_step_str", "7,000"),
+    ],
+)
+def test_cleared_numeric_fields_restore_model_value(training_panel_module, binding_name, expected_text):
+    panel = training_panel_module.TrainingPanel()
+    model = _ModelStub()
+    params = _ParamsStub()
+    dataset = _DatasetStub()
+
+    panel._bind_num_props(model, lambda: params, lambda: dataset)
+
+    getter, setter = model.bindings[binding_name]
+    setter("")
+
+    assert getter() == expected_text
+
+
+@pytest.mark.parametrize(
+    ("binding_name", "input_text", "expected_text"),
+    [
+        ("iterations_str", "300000", "300,000"),
+        ("ppisp_activation_step_str", "300000", "300,000"),
+        ("max_width_str", "3000", "3,000"),
+        ("new_step_str", "300000", "300,000"),
+    ],
+)
+def test_committed_numeric_fields_reformat_and_dirty(
+    training_panel_module, monkeypatch, binding_name, input_text, expected_text
+):
+    panel = training_panel_module.TrainingPanel()
+    panel._handle = _HandleStub()
+    model = _ModelStub()
+    params = _ParamsStub()
+    dataset = _DatasetStub()
+
+    monkeypatch.setattr(
+        training_panel_module,
+        "lf",
+        SimpleNamespace(
+            optimization_params=lambda: params,
+            dataset_params=lambda: dataset,
+        ),
+    )
+
+    panel._bind_num_props(model, lambda: params, lambda: dataset)
+
+    getter, setter = model.bindings[binding_name]
+    setter(input_text)
+
+    assert getter() == expected_text
+    assert panel._handle.dirty_fields == [binding_name]
+
+
+@pytest.mark.parametrize(
+    ("binding_name", "input_text", "expected_text"),
+    [
+        ("iterations_str", "1,11110", "111,110"),
+        ("ppisp_activation_step_str", "56,7800", "567,800"),
+        ("max_width_str", "2,0,4,8", "2,048"),
+        ("new_step_str", "70,0000", "700,000"),
+    ],
+)
+def test_integer_fields_strip_arbitrary_commas_and_reformat(
+    training_panel_module, monkeypatch, binding_name, input_text, expected_text
+):
+    panel = training_panel_module.TrainingPanel()
+    panel._handle = _HandleStub()
+    model = _ModelStub()
+    params = _ParamsStub()
+    dataset = _DatasetStub()
+
+    monkeypatch.setattr(
+        training_panel_module,
+        "lf",
+        SimpleNamespace(
+            optimization_params=lambda: params,
+            dataset_params=lambda: dataset,
+        ),
+    )
+
+    panel._bind_num_props(model, lambda: params, lambda: dataset)
+
+    getter, setter = model.bindings[binding_name]
+    setter(input_text)
+
+    assert getter() == expected_text
+    assert panel._handle.dirty_fields == [binding_name]
+
+
+@pytest.mark.parametrize(
+    ("binding_name", "buffer_text", "expected_text"),
+    [
+        ("iterations_str", "1a1110", "1,234"),
+        ("ppisp_activation_step_str", "56x7800", "5,678"),
+        ("max_width_str", "20x48", "2,048"),
+        ("new_step_str", "70x000", "7,000"),
+    ],
+)
+def test_invalid_numeric_commit_restores_canonical_value(
+    training_panel_module, monkeypatch, binding_name, buffer_text, expected_text
+):
+    panel = training_panel_module.TrainingPanel()
+    panel._handle = _HandleStub()
+    params = _ParamsStub()
+    dataset = _DatasetStub()
+
+    monkeypatch.setattr(
+        training_panel_module,
+        "lf",
+        SimpleNamespace(
+            optimization_params=lambda: params,
+            dataset_params=lambda: dataset,
+        ),
+    )
+
+    panel._text_bufs[binding_name] = buffer_text
+    panel._commit_number_input_key(binding_name)
+
+    assert panel._text_bufs[binding_name] == expected_text
+    assert panel._handle.dirty_fields == [binding_name]
