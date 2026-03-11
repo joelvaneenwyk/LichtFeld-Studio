@@ -16,8 +16,8 @@ LichtFeld Studio plugins are Python packages discovered from `~/.lichtfeld/plugi
         └── panels/
             ├── __init__.py
             ├── main_panel.py
-            ├── main_panel.rml      # Optional
-            └── main_panel.rcss     # Optional
+            ├── main_panel.rml      # Scaffolded for v1; optional to customize
+            └── main_panel.rcss     # Scaffolded sibling stylesheet
 ```
 
 Discovery is manifest-driven: a plugin is discovered because it has a `pyproject.toml` with a `[tool.lichtfeld]` section.
@@ -70,16 +70,18 @@ Two creation paths exist and they are intentionally different:
 
 ### `lf.plugins.create(name)`
 
-Creates only the minimal source package:
+Creates the v1 source package scaffold:
 
 ```text
 pyproject.toml
 __init__.py
 panels/__init__.py
 panels/main_panel.py
+panels/main_panel.rml
+panels/main_panel.rcss
 ```
 
-This is the smallest valid plugin and matches the first step of the panel learning path.
+The generated panel still starts as immediate-mode `draw(ui)` content. The retained files are there so plugin authors can move into hybrid UI without reshaping the package later.
 
 ### `LichtFeld-Studio plugin create <name>`
 
@@ -92,9 +94,34 @@ Creates the same source files and then adds:
 
 This is the convenience path for local development.
 
-### Why no `.rml` or `.rcss` are generated
+### Why `.rml` and `.rcss` are generated in v1
 
-The default template is a pure `draw(ui)` panel. Most plugin authors do not need retained DOM files on day one, so the scaffold keeps the initial surface small. Retained files are added only when the panel moves into the hybrid path.
+v1 intentionally ships a hybrid-ready scaffold. `main_panel.py` is still the first file you edit, but the sibling `main_panel.rml` and `main_panel.rcss` are already wired up with an `#im-root` mount point for embedded immediate widgets.
+
+## Compatibility contract
+
+The v1 plugin system is strict and does not preserve the old compatibility fields. Every plugin manifest must declare:
+
+```toml
+[tool.lichtfeld]
+hot_reload = true
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
+```
+
+Rules:
+
+- `plugin_api` targets the public plugin API contract.
+- `lichtfeld_version` targets the host application/runtime version.
+- `required_features` is a list of optional host features your plugin depends on.
+- Legacy `min_lichtfeld_version` / `max_lichtfeld_version` fields are removed in v1 and rejected.
+
+The runtime exposes the current host contract through:
+
+- `lf.PLUGIN_API_VERSION`
+- `lf.plugins.API_VERSION`
+- `lf.plugins.FEATURES`
 
 ## Unified panel model
 

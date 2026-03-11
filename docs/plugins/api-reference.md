@@ -633,9 +633,11 @@ class PluginInfo:
     author: str = ""
     entry_point: str = "__init__"
     dependencies: list[str] = []
-    auto_start: bool = False  # deprecated, ignored — use user settings via load_on_startup
+    auto_start: bool = False
     hot_reload: bool = True
-    min_lichtfeld_version: str = ""
+    plugin_api: str = ""
+    lichtfeld_version: str = ""
+    required_features: list[str] = []
 ```
 
 ### PluginState
@@ -668,9 +670,17 @@ import lichtfeld as lf
 | `lf.plugins.get_state(name)` | `PluginState \| None` | Read plugin state |
 | `lf.plugins.get_error(name)` | `str \| None` | Read the last plugin error |
 | `lf.plugins.get_traceback(name)` | `str \| None` | Read the full traceback |
-| `lf.plugins.create(name)` | `str` | Create the minimal source scaffold in `~/.lichtfeld/plugins/<name>` |
+| `lf.plugins.create(name)` | `str` | Create the v1 source scaffold in `~/.lichtfeld/plugins/<name>` |
 
-`lf.plugins.create()` writes only the source package. If you want a scaffold that also adds `.venv`, `.vscode`, and `pyrightconfig.json`, use the CLI command `LichtFeld-Studio plugin create <name>`.
+`lf.plugins.create()` writes the source package, including `panels/main_panel.py`, `panels/main_panel.rml`, and `panels/main_panel.rcss`. If you want a scaffold that also adds `.venv`, `.vscode`, and `pyrightconfig.json`, use the CLI command `LichtFeld-Studio plugin create <name>`.
+
+Runtime compatibility constants:
+
+| Constant | Type | Description |
+|---|---|---|
+| `lf.PLUGIN_API_VERSION` | `str` | Host plugin API version |
+| `lf.plugins.API_VERSION` | `str` | Same plugin API version through the plugin namespace |
+| `lf.plugins.FEATURES` | `list[str]` | Supported optional plugin features on this host |
 
 ---
 
@@ -1455,9 +1465,13 @@ dependencies = []            # list[string], optional - Python packages (PEP 508
 [tool.lichtfeld]
 hot_reload = true            # bool, required
 entry_point = "__init__"     # string, optional - Module to load (default: __init__)
-min_lichtfeld_version = ""   # string, optional - Minimum LichtFeld version
+plugin_api = ">=1,<2"        # string, required - Supported plugin API range (PEP 440)
+lichtfeld_version = ">=0.4.2"  # string, required - Supported host app/runtime range (PEP 440)
+required_features = []       # list[string], required - Optional host features this plugin needs
 author = ""                  # string, optional - Author fallback (if no [project].authors)
 ```
+
+v1 is strict. Legacy `min_lichtfeld_version` / `max_lichtfeld_version` fields are removed and rejected.
 
 ---
 

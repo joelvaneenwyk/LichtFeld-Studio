@@ -74,7 +74,9 @@ class PluginContext:
         """Build context from current application state."""
         try:
             import lichtfeld as lf
-        except ModuleNotFoundError:
+        except ModuleNotFoundError as exc:
+            if exc.name != "lichtfeld":
+                raise
             return cls(
                 scene=None,
                 view=None,

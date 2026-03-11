@@ -25,8 +25,8 @@ def test_create_plugin_generates_unified_panel_template(tmp_path):
     panel_rcss = plugin_dir / "panels" / "main_panel.rcss"
 
     assert panel_py.exists()
-    assert not panel_rml.exists()
-    assert not panel_rcss.exists()
+    assert panel_rml.exists()
+    assert panel_rcss.exists()
 
     sys.path.insert(0, str(tmp_path))
     original_lf = sys.modules.get("lichtfeld")
@@ -49,9 +49,16 @@ def test_create_plugin_generates_unified_panel_template(tmp_path):
 
         assert panel_cls.__mro__[1].__name__ == "Panel"
         assert "def draw(self, ui):" in panel_py.read_text()
+        assert 'template = str(Path(__file__).resolve().with_name("main_panel.rml"))' in panel_py.read_text()
         assert "lf.ui.Panel" in panel_py.read_text()
         assert 'id = "example_plugin.main_panel"' in panel_py.read_text()
         assert "lf.ui.PanelSpace.MAIN_PANEL_TAB" in panel_py.read_text()
+        assert 'plugin_api = ">=1,<2"' in (plugin_dir / "pyproject.toml").read_text()
+        assert 'lichtfeld_version = ">=0.4.2"' in (plugin_dir / "pyproject.toml").read_text()
+        assert "required_features = []" in (plugin_dir / "pyproject.toml").read_text()
+        assert '<link type="text/rcss" href="main_panel.rcss"/>' in panel_rml.read_text()
+        assert '<div id="im-root"></div>' in panel_rml.read_text()
+        assert ".panel-shell" in panel_rcss.read_text()
     finally:
         if original_lf is None:
             sys.modules.pop("lichtfeld", None)

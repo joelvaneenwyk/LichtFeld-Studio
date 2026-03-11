@@ -25,7 +25,9 @@ This creates the minimal plugin package and also adds local development helpers:
 ├── __init__.py
 └── panels/
     ├── __init__.py
-    └── main_panel.py
+    ├── main_panel.py
+    ├── main_panel.rml
+    └── main_panel.rcss
 ```
 
 Useful companion commands:
@@ -52,12 +54,14 @@ This creates only the plugin package itself:
 ├── __init__.py
 └── panels/
     ├── __init__.py
-    └── main_panel.py
+    ├── main_panel.py
+    ├── main_panel.rml
+    └── main_panel.rcss
 ```
 
-## Why the scaffold does not create `.rml` and `.rcss`
+## Why the scaffold now creates `.rml` and `.rcss`
 
-The scaffold is intentionally minimal. Most plugins start as a pure immediate-mode panel:
+The v1 scaffold is intentionally hybrid-ready. The generated panel still starts as a simple immediate-mode `draw(ui)` panel, but it also includes a sibling RML/RCSS shell so authors can move into retained layout without reshaping the package later:
 
 ```python
 import lichtfeld as lf
@@ -73,9 +77,7 @@ class MainPanel(lf.ui.Panel):
         ui.text_disabled("Start simple and keep state on self.")
 ```
 
-That panel does not need any extra files. Creating `main_panel.rml` and `main_panel.rcss` up front would add noise to the default workflow and push authors into the advanced path before they need it.
-
-Use the scaffold as step 1, then add files only when the panel actually needs retained DOM structure or a standalone stylesheet.
+The default scaffold keeps `draw(ui)` as the content source and mounts it into `<div id="im-root"></div>` inside `main_panel.rml`. You can ignore the retained files until you need them, but they are already wired correctly for v1.
 
 ## Styling progression
 
@@ -133,20 +135,10 @@ class HybridPanel(lf.ui.Panel):
         ui.text_disabled("Rendered into #im-root")
 ```
 
-At that point, add the sibling files:
-
-```text
-~/.lichtfeld/plugins/my_plugin/
-└── panels/
-    ├── main_panel.py
-    ├── main_panel.rml
-    └── main_panel.rcss
-```
-
 Important details:
 
 - Use an absolute path for plugin-local `template` values.
-- A sibling `main_panel.rcss` is loaded automatically when `main_panel.rml` exists.
+- A sibling `main_panel.rcss` is scaffolded and loaded automatically with `main_panel.rml`.
 - Keep `<div id="im-root"></div>` in the template if you want embedded `draw(ui)` content.
 
 ## Development loop
@@ -188,6 +180,26 @@ dependencies = [
 ```
 
 Plugin environments are isolated per plugin. The CLI scaffold creates `.venv` immediately. The Python scaffold creates only the source files; dependency installation still happens through the plugin system when the plugin is loaded.
+
+## Compatibility manifest
+
+The v1 release requires an explicit compatibility contract in `[tool.lichtfeld]`:
+
+```toml
+[tool.lichtfeld]
+hot_reload = true
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
+```
+
+Rules:
+
+- `plugin_api` targets the public plugin API surface, not the plugin's own package version.
+- `lichtfeld_version` targets the host application/runtime version.
+- `required_features` lists optional host features the plugin needs. Inspect the runtime surface with `lf.plugins.API_VERSION`, `lf.plugins.FEATURES`, or `lf.PLUGIN_API_VERSION`.
+- `LichtFeld-Studio plugin check` validates these fields and rejects incompatible plugins before load time.
+- Legacy `min_lichtfeld_version` / `max_lichtfeld_version` fields are removed in v1 and are not supported.
 
 ## IDE support
 

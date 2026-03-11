@@ -1121,6 +1121,8 @@ def register_class(cls: object) -> None:
 def unregister_class(cls: object) -> None:
     """Unregister a class (Panel, Operator, or Menu)"""
 
+PLUGIN_API_VERSION: str = '1.0'
+
 class GizmoEventType(enum.Enum):
     PRESS = 0
 

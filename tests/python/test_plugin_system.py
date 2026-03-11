@@ -6,6 +6,23 @@ import pytest
 import tempfile
 import sys
 from pathlib import Path
+from unittest.mock import patch
+
+
+@pytest.fixture(autouse=True)
+def bypass_installer_for_manager_tests(request):
+    """Keep manager-path tests independent from the bundled uv runtime."""
+    nodeid = request.node.nodeid
+    if (
+        "test_load_venv_creation_uses_bundled_python_only" in nodeid
+        or "TestInstallerSyncDetection" in nodeid
+    ):
+        yield
+        return
+
+    with patch("lfs_plugins.installer.PluginInstaller.ensure_venv", return_value=True), \
+         patch("lfs_plugins.installer.PluginInstaller.install_dependencies", return_value=True):
+        yield
 
 
 @pytest.fixture
@@ -57,6 +74,9 @@ dependencies = []
 [tool.lichtfeld]
 auto_start = true
 hot_reload = true
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 """
     )
 
@@ -112,6 +132,34 @@ class TestPluginDiscovery:
         mgr = PluginManager.instance()
         plugins = mgr.discover()
         assert plugins == []
+
+    def test_discover_logs_v1_manifest_fix_hint(self, temp_plugins_dir, caplog):
+        """Should log a direct fix hint for pre-v1 plugin manifests."""
+        from lfs_plugins import PluginManager
+
+        plugin_dir = temp_plugins_dir / "legacy_plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "pyproject.toml").write_text(
+            """
+[project]
+name = "legacy_plugin"
+version = "0.1.0"
+description = "Legacy plugin"
+
+[tool.lichtfeld]
+hot_reload = true
+"""
+        )
+        (plugin_dir / "__init__.py").write_text("def on_load(): pass")
+
+        mgr = PluginManager.instance()
+        with caplog.at_level("WARNING"):
+            plugins = mgr.discover()
+
+        assert plugins == []
+        assert any("Skipping plugin 'legacy_plugin': invalid manifest." in record.message for record in caplog.records)
+        assert any("missing tool.lichtfeld.plugin_api" in record.message for record in caplog.records)
+        assert any("v1 manifest requires" in record.message for record in caplog.records)
 
 
 class TestPluginLoading:
@@ -180,6 +228,9 @@ dependencies = []
 [tool.lichtfeld]
 auto_start = true
 hot_reload = false
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 """
         )
         (plugin_dir / "__init__.py").write_text("def on_load():\n    pass\n")
@@ -273,6 +324,9 @@ description = "Minimal plugin"
 [tool.lichtfeld]
 auto_start = false
 hot_reload = false
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 """
         )
         (plugin_dir / "__init__.py").write_text("def on_load(): pass")
@@ -316,6 +370,9 @@ description = "Plugin that fails to load"
 [tool.lichtfeld]
 auto_start = true
 hot_reload = false
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 """
         )
         (plugin_dir / "__init__.py").write_text("raise RuntimeError('intentional')")
@@ -325,7 +382,7 @@ hot_reload = false
 
         assert result is False
         assert mgr.get_state("broken_plugin") == PluginState.ERROR
-        assert mgr.get_error("broken_plugin") is not None
+        assert "intentional" in mgr.get_error("broken_plugin")
 
 
 class TestPluginLifecycle:
@@ -361,6 +418,9 @@ description = "Plugin {name}"
 
 [tool.lichtfeld]
 hot_reload = false
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 """
             )
             (plugin_dir / "__init__.py").write_text("def on_load(): pass")
@@ -395,6 +455,9 @@ description = "Plugin with auto_start in manifest"
 [tool.lichtfeld]
 auto_start = true
 hot_reload = false
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 """
         )
         (plugin_dir / "__init__.py").write_text("def on_load(): pass")
@@ -419,6 +482,9 @@ description = "Plugin without auto_start"
 
 [tool.lichtfeld]
 hot_reload = true
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 """
         )
         (plugin_dir / "__init__.py").write_text("def on_load(): pass")
@@ -432,6 +498,12 @@ hot_reload = true
 
 class TestVersionEnforcement:
     """Tests for plugin version enforcement."""
+
+    @staticmethod
+    def _load_without_installer(mgr, name: str):
+        with patch("lfs_plugins.installer.PluginInstaller.ensure_venv", return_value=None), \
+             patch("lfs_plugins.installer.PluginInstaller.install_dependencies", return_value=True):
+            return mgr.load(name)
 
     def test_version_check_passes(self, temp_plugins_dir):
         """Should load plugin with compatible version requirement."""
@@ -449,20 +521,22 @@ description = "Plugin with compatible version"
 [tool.lichtfeld]
 auto_start = true
 hot_reload = false
-min_lichtfeld_version = "0.5.0"
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 """
         )
         (plugin_dir / "__init__.py").write_text("def on_load(): pass")
 
         mgr = PluginManager.instance()
-        result = mgr.load("compatible_plugin")
+        result = self._load_without_installer(mgr, "compatible_plugin")
 
         assert result is True
         assert mgr.get_state("compatible_plugin") == PluginState.ACTIVE
         mgr.unload("compatible_plugin")
 
-    def test_version_check_fails(self, temp_plugins_dir):
-        """Should fail to load plugin requiring newer LichtFeld version."""
+    def test_lichtfeld_version_check_fails(self, temp_plugins_dir):
+        """Should fail to load plugin requiring a newer LichtFeld host version."""
         from lfs_plugins import PluginManager, PluginVersionError
 
         plugin_dir = temp_plugins_dir / "future_plugin"
@@ -477,15 +551,73 @@ description = "Plugin requiring future version"
 [tool.lichtfeld]
 auto_start = true
 hot_reload = false
-min_lichtfeld_version = "99.0.0"
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=99.0"
+required_features = []
 """
         )
         (plugin_dir / "__init__.py").write_text("def on_load(): pass")
 
         mgr = PluginManager.instance()
 
-        with pytest.raises(PluginVersionError, match="requires LichtFeld >= 99.0.0"):
-            mgr.load("future_plugin")
+        with pytest.raises(PluginVersionError, match="requires LichtFeld >=99.0"):
+            self._load_without_installer(mgr, "future_plugin")
+
+    def test_plugin_api_check_fails(self, temp_plugins_dir):
+        """Should fail to load plugin requiring a newer plugin API major."""
+        from lfs_plugins import PluginManager, PluginVersionError
+
+        plugin_dir = temp_plugins_dir / "future_api_plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "pyproject.toml").write_text(
+            """
+[project]
+name = "future_api_plugin"
+version = "1.0.0"
+description = "Plugin requiring future plugin API"
+
+[tool.lichtfeld]
+auto_start = true
+hot_reload = false
+plugin_api = ">=2,<3"
+lichtfeld_version = ">=0.4.2"
+required_features = []
+"""
+        )
+        (plugin_dir / "__init__.py").write_text("def on_load(): pass")
+
+        mgr = PluginManager.instance()
+
+        with pytest.raises(PluginVersionError, match="requires plugin API >=2,<3"):
+            self._load_without_installer(mgr, "future_api_plugin")
+
+    def test_required_features_check_fails(self, temp_plugins_dir):
+        """Should fail to load plugin requiring unsupported runtime features."""
+        from lfs_plugins import PluginManager, PluginVersionError
+
+        plugin_dir = temp_plugins_dir / "feature_plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "pyproject.toml").write_text(
+            """
+[project]
+name = "feature_plugin"
+version = "1.0.0"
+description = "Plugin requiring unsupported features"
+
+[tool.lichtfeld]
+auto_start = true
+hot_reload = false
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = ["panels.v2"]
+"""
+        )
+        (plugin_dir / "__init__.py").write_text("def on_load(): pass")
+
+        mgr = PluginManager.instance()
+
+        with pytest.raises(PluginVersionError, match="requires unsupported features: panels.v2"):
+            self._load_without_installer(mgr, "feature_plugin")
 
 
 class TestModuleNamespacing:
@@ -521,6 +653,9 @@ description = "Plugin named json for collision test"
 [tool.lichtfeld]
 auto_start = true
 hot_reload = false
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 """
         )
         (plugin_dir / "__init__.py").write_text("PLUGIN_LOADED = True\ndef on_load(): pass")
@@ -639,6 +774,9 @@ dependencies = ["requests>=2.0"]
 [tool.lichtfeld]
 auto_start = true
 hot_reload = false
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 """
         )
         venv_dir = plugin_dir / ".venv"
@@ -660,6 +798,9 @@ hot_reload = false
             dependencies=["requests>=2.0"],
             auto_start=True,
             hot_reload=True,
+            plugin_api=">=1,<2",
+            lichtfeld_version=">=0.4.2",
+            required_features=[],
         )
         instance = PluginInstance(info=info)
         instance.venv_path = plugin_dir / ".venv"
@@ -692,6 +833,9 @@ dependencies = ["requests>=2.0"]
 [tool.lichtfeld]
 auto_start = true
 hot_reload = false
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 """
         )
         installer = self._make_installer(installer_plugin)

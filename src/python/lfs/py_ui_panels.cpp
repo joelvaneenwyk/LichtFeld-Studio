@@ -43,8 +43,8 @@ namespace lfs::python {
         bool class_declares_attr(nb::handle cls, const char* attr_name) {
             if (!nb::hasattr(cls, "__dict__"))
                 return false;
-            const nb::dict class_dict = nb::cast<nb::dict>(nb::getattr(cls, "__dict__"));
-            return class_dict.contains(nb::str(attr_name));
+            nb::object class_dict = nb::getattr(cls, "__dict__");
+            return PyMapping_HasKeyString(class_dict.ptr(), attr_name) == 1;
         }
 
         bool class_overrides(nb::object cls, nb::object base, const char* attr_name) {
@@ -306,6 +306,7 @@ namespace lfs::python {
             if (class_overrides(panel_class, panel_base, "id") && panel_id.empty())
                 throw_value_error("id must not be empty");
         }
+
         if (nb::hasattr(panel_class, "label")) {
             label = parse_string_value(panel_class.attr("label"), "label");
         }
@@ -437,7 +438,8 @@ namespace lfs::python {
         std::string module_prefix;
         try {
             module_prefix = nb::cast<std::string>(panel_class.attr("__module__"));
-        } catch (...) {
+        } catch (const std::exception& e) {
+            LOG_DEBUG("Panel '{}': could not read __module__: {}", panel_id, e.what());
         }
 
         if (!gui::PanelRegistry::instance().register_panel(std::move(info))) {

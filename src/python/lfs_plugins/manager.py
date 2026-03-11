@@ -18,6 +18,13 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from .capabilities import CapabilityRegistry
+from .compat import (
+    LICHTFELD_VERSION,
+    PLUGIN_API_VERSION,
+    SUPPORTED_PLUGIN_FEATURES,
+    compatibility_errors,
+    validate_manifest_compatibility_fields,
+)
 from .errors import PluginError, PluginVersionError
 from .installer import PluginInstaller, clone_from_url, uninstall_plugin, update_plugin
 from .plugin import PluginInfo, PluginInstance, PluginState
@@ -54,7 +61,6 @@ try:
 except Exception:
     pass
 
-LICHTFELD_VERSION = "1.0.0"
 MODULE_PREFIX = "lfs_plugins"
 
 
@@ -109,7 +115,7 @@ class PluginManager:
                 try:
                     plugins.append(self._parse_manifest(entry))
                 except Exception as e:
-                    _log.warning("Skipping invalid plugin '%s': %s", entry.name, e)
+                    _log.warning("Skipping plugin '%s': invalid manifest. %s", entry.name, e)
         return plugins
 
     def pre_register(self, discovered: List[PluginInfo]) -> None:
@@ -136,6 +142,9 @@ class PluginManager:
 
         if "hot_reload" not in lf:
             raise ValueError("Missing tool.lichtfeld.hot_reload")
+        compatibility_errors_in_manifest = validate_manifest_compatibility_fields(lf)
+        if compatibility_errors_in_manifest:
+            raise ValueError(compatibility_errors_in_manifest[0].removeprefix("pyproject.toml: "))
 
         authors = project.get("authors", [])
         author = authors[0].get("name", "") if authors else lf.get("author", "")
@@ -150,7 +159,9 @@ class PluginManager:
             dependencies=project.get("dependencies", []),
             auto_start=lf.get("auto_start", False),
             hot_reload=lf["hot_reload"],
-            min_lichtfeld_version=lf.get("min_lichtfeld_version", ""),
+            plugin_api=lf["plugin_api"].strip(),
+            lichtfeld_version=lf["lichtfeld_version"].strip(),
+            required_features=list(lf["required_features"]),
         )
 
     def load(self, name: str, on_progress: Optional[Callable] = None) -> bool:
@@ -216,13 +227,17 @@ class PluginManager:
             return False
 
     def _check_version_compatibility(self, plugin: PluginInstance, name: str):
-        """Raise PluginVersionError if plugin requires newer LichtFeld."""
-        if not plugin.info.min_lichtfeld_version or Version is None:
-            return
-        required = Version(plugin.info.min_lichtfeld_version)
-        current = Version(LICHTFELD_VERSION)
-        if current < required:
-            raise PluginVersionError(f"Plugin '{name}' requires LichtFeld >= {required}, but you have {current}")
+        """Raise PluginVersionError if plugin compatibility contract is not satisfied."""
+        issues = compatibility_errors(
+            plugin.info.plugin_api,
+            plugin.info.lichtfeld_version,
+            plugin.info.required_features,
+            current_plugin_api=PLUGIN_API_VERSION,
+            current_lichtfeld_version=LICHTFELD_VERSION,
+            supported_features=SUPPORTED_PLUGIN_FEATURES,
+        )
+        if issues:
+            raise PluginVersionError(f"Plugin '{name}' {'; '.join(issues)}")
 
     _SLOW_IMPORT_THRESHOLD_MS = 100
     _SLOW_TOTAL_THRESHOLD_MS = 500
@@ -572,7 +587,13 @@ class PluginManager:
 
     def search(self, query: str, compatible_only: bool = True) -> List[RegistryPluginInfo]:
         """Search plugin registry."""
-        return self.registry.search(query, compatible_only, LICHTFELD_VERSION)
+        return self.registry.search(
+            query,
+            compatible_only,
+            LICHTFELD_VERSION,
+            plugin_api=PLUGIN_API_VERSION,
+            supported_features=SUPPORTED_PLUGIN_FEATURES,
+        )
 
     def install_from_registry(
         self,
@@ -582,7 +603,13 @@ class PluginManager:
         auto_load: bool = True,
     ) -> str:
         """Install plugin from registry."""
-        version_info = self.registry.resolve_version(plugin_id, version, LICHTFELD_VERSION)
+        version_info = self.registry.resolve_version(
+            plugin_id,
+            version,
+            LICHTFELD_VERSION,
+            plugin_api=PLUGIN_API_VERSION,
+            supported_features=SUPPORTED_PLUGIN_FEATURES,
+        )
 
         if version_info.git_ref:
             plugin_data = self.registry.get_plugin(plugin_id)
@@ -659,7 +686,10 @@ class PluginManager:
         updates = {}
         for info in self.discover():
             try:
-                registry_info = self.registry.get_plugin(info.name)
+                registry_plugin_id = self._resolve_registry_plugin_id(info.name)
+                if not registry_plugin_id:
+                    continue
+                registry_info = self.registry.get_plugin(registry_plugin_id)
                 latest = registry_info.get("latest_version", "0.0.0")
                 if Version is not None and Version(latest) > Version(info.version):
                     updates[info.name] = (info.version, latest)
@@ -668,3 +698,9 @@ class PluginManager:
             except Exception:
                 pass
         return updates
+
+    def _resolve_registry_plugin_id(self, plugin_name: str) -> Optional[str]:
+        matches = [entry for entry in self.search(plugin_name, compatible_only=False) if entry.name == plugin_name]
+        if len(matches) == 1:
+            return matches[0].full_id
+        return None

@@ -27,8 +27,8 @@ The key idea is that `lf.ui.Panel` is one public base class that scales from the
 ├── panels/
 │   ├── __init__.py
 │   ├── main_panel.py
-│   ├── main_panel.rml   # Optional, only for custom retained templates
-│   └── main_panel.rcss  # Optional, sibling stylesheet for main_panel.rml
+│   ├── main_panel.rml   # Scaffolded for v1; optional to customize
+│   └── main_panel.rcss  # Scaffolded sibling stylesheet
 ├── operators/           # Optional
 │   └── my_operator.py
 └── icons/               # Optional PNG icons for custom tools
@@ -56,11 +56,11 @@ print(path)
 
 Important scaffold behavior:
 
-- `lf.plugins.create()` writes only `pyproject.toml`, `__init__.py`, `panels/__init__.py`, and `panels/main_panel.py`.
+- `lf.plugins.create()` writes `pyproject.toml`, `__init__.py`, `panels/__init__.py`, `panels/main_panel.py`, `panels/main_panel.rml`, and `panels/main_panel.rcss`.
 - `LichtFeld-Studio plugin create` writes the same source files and also adds `.venv/`, `.vscode/`, and `pyrightconfig.json`.
-- Neither scaffold creates `main_panel.rml` or `main_panel.rcss` by default.
+- The scaffold is hybrid-ready, but you can ignore the retained files until you actually need custom DOM or standalone RCSS.
 
-That is intentional. Most plugins should start as a simple `draw(ui)` panel and only add retained files when they actually need a custom template or standalone stylesheet.
+That is intentional. Most plugins should still start by editing `draw(ui)` in `main_panel.py`; v1 just removes the later migration work when you decide to add a custom template.
 
 ### `pyproject.toml`
 
@@ -76,13 +76,19 @@ dependencies = []
 
 [tool.lichtfeld]
 hot_reload = true
+plugin_api = ">=1,<2"
+lichtfeld_version = ">=0.4.2"
+required_features = []
 ```
 
 Notes:
 
 - `name`, `version`, and `description` are required.
 - `hot_reload` is required.
+- `plugin_api`, `lichtfeld_version`, and `required_features` are required in v1.
+- Legacy `min_lichtfeld_version` / `max_lichtfeld_version` fields are removed and rejected.
 - Plugin-local Python dependencies go in `project.dependencies`.
+- Inspect the current host contract from Python with `lf.PLUGIN_API_VERSION`, `lf.plugins.API_VERSION`, and `lf.plugins.FEATURES`.
 
 ### `__init__.py`
 
@@ -269,7 +275,7 @@ When a template file exists at `main_panel.rml`, LichtFeld automatically looks f
 | Tweak spacing, colors, or typography on a retained shell | `style` with inline RCSS | None |
 | Own the DOM structure and stylesheet | `template` plus sibling `.rml` and `.rcss` | `main_panel.rml`, `main_panel.rcss` |
 
-Use that ladder in order. The scaffold starts at the first row on purpose.
+Use that ladder in order. The scaffold still starts with immediate-mode content on the first row even though the retained shell files are already present.
 
 ### Step 3: go full hybrid
 
@@ -1453,7 +1459,7 @@ That Python API creates the minimal source package only. If you also want a plug
 LichtFeld-Studio plugin create my_new_plugin
 ```
 
-Both scaffold paths start with the same step-1 panel template and intentionally do not create `main_panel.rml` or `main_panel.rcss`. Add those files when you move into the custom-template styling path.
+Both scaffold paths start with the same step-1 panel template and now include `main_panel.rml` and `main_panel.rcss` up front. You can ignore those files until you move into the custom-template styling path.
 
 ### Install from GitHub
 
@@ -1475,6 +1481,8 @@ lf.plugins.check_updates()
 lf.plugins.update("my_plugin")
 ```
 
+Registry installs use the same v1 compatibility contract as local plugins. A version is eligible only if its `plugin_api`, `lichtfeld_version`, and `required_features` match the current host.
+
 ### Manage plugins
 
 ```python
@@ -1494,5 +1502,8 @@ For publishing, ensure your `pyproject.toml` includes:
 - `name` - Unique plugin identifier
 - `version` - Semantic version (e.g., `"1.0.0"`)
 - `description` - Clear description of what the plugin does
-- `author` - Your name or organization
-- `packages` - Any Python dependencies
+- `authors` - Your name or organization
+- `dependencies` - Any Python dependencies
+- `plugin_api` - Supported plugin API range, such as `"~=1.0"` or `">=1,<2"`
+- `lichtfeld_version` - Supported host/runtime range, such as `">=0.4.2"`
+- `required_features` - Optional host features the plugin requires

@@ -1283,6 +1283,7 @@ NB_MODULE(lichtfeld, m) {
 #endif
     build_info.attr("repo_url") = "https://github.com/MrNeRF/LichtFeld-Studio";
     build_info.attr("website_url") = "https://lichtfeld.io";
+    m.attr("PLUGIN_API_VERSION") = "1.0";
 
     lfs::python::register_commands(m);
     lfs::python::register_gizmos(m);

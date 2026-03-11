@@ -4,6 +4,7 @@
 
 from importlib import import_module
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
 import sys
 
 import pytest
@@ -25,6 +26,31 @@ def test_plugin_package_exports_unified_panel_types(monkeypatch):
     assert module.Panel.__name__ == "Panel"
     assert not hasattr(module, "RmlPanel")
     assert module.Menu.__name__ == "Menu"
+
+
+def test_plugin_package_imports_without_v1_panel_runtime(monkeypatch):
+    monkeypatch.delitem(sys.modules, "lichtfeld", raising=False)
+    monkeypatch.delitem(sys.modules, "lfs_plugins", raising=False)
+    monkeypatch.delitem(sys.modules, "lfs_plugins.panels", raising=False)
+    monkeypatch.delitem(sys.modules, "lfs_plugins.plugin_marketplace_panel", raising=False)
+
+    fake_lf = ModuleType("lichtfeld")
+    fake_lf.ui = SimpleNamespace(
+        Panel=type("Panel", (), {}),
+        PanelSpace=SimpleNamespace(MAIN_PANEL_TAB="MAIN_PANEL_TAB"),
+    )
+    monkeypatch.setitem(sys.modules, "lichtfeld", fake_lf)
+
+    module = import_module("lfs_plugins")
+    templates = import_module("lfs_plugins.templates")
+    signals = import_module("lfs_plugins.ui.signals")
+    tool_defs = import_module("lfs_plugins.tool_defs")
+
+    assert module.Panel.__name__ == "Panel"
+    assert callable(module.register_builtin_panels)
+    assert callable(templates.create_plugin)
+    assert signals.Signal.__name__ == "Signal"
+    assert tool_defs.ToolDef.__name__ == "ToolDef"
 
 
 def test_menu_base_exposes_schema_fallback(monkeypatch):
@@ -109,6 +135,15 @@ def test_ui_stub_surface_matches_panel_api_names():
     assert "def set_panel_space(panel_id: str, space: PanelSpace)" in stub_text
     assert "    NONE: int = ..." in stub_text
     assert "    None: int = ..." not in stub_text
+
+
+def test_plugin_stub_surface_exposes_v1_compatibility_contract():
+    root_stub = (PROJECT_ROOT / "src" / "python" / "stubs" / "lichtfeld" / "__init__.pyi").read_text()
+    plugins_stub = (PROJECT_ROOT / "src" / "python" / "stubs" / "lichtfeld" / "plugins.pyi").read_text()
+
+    assert "PLUGIN_API_VERSION: str" in root_stub
+    assert "API_VERSION: str" in plugins_stub
+    assert "FEATURES: list = ..." in plugins_stub
 
 
 def test_python_stub_workflow_uses_explicit_sync_and_check_targets():
