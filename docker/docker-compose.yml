@@ -36,10 +36,4 @@ services:
       - ${HOME}/.Xauthority:/home/${USERNAME}/.Xauthority:rw
       - ${HOME}/.ssh:/home/${USERNAME}/.ssh:ro
       - ${HOME}/.lichtfeld:/home/${USERNAME}/.lichtfeld:rw
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [ gpu ]
+    gpus: all
