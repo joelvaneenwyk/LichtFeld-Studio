@@ -836,6 +836,17 @@ namespace lfs::vis {
             selection_server_->process_pending_commands();
         }
 
+        // Process MCP work queue
+        {
+            std::vector<std::function<void()>> work;
+            {
+                std::lock_guard lock(work_queue_mutex_);
+                work.swap(work_queue_);
+            }
+            for (auto& fn : work)
+                fn();
+        }
+
         // Process pending capability request from IPC thread
         {
             std::lock_guard lock(capability_request_mutex_);
@@ -1155,6 +1166,27 @@ namespace lfs::vis {
 
     void VisualizerImpl::clearScene() {
         data_loader_->clearScene();
+    }
+
+    void VisualizerImpl::postWork(std::function<void()> fn) {
+        std::lock_guard lock(work_queue_mutex_);
+        work_queue_.push_back(std::move(fn));
+    }
+
+    std::expected<void, std::string> VisualizerImpl::startTraining() {
+        if (!trainer_manager_)
+            return std::unexpected("Trainer manager not initialized");
+        if (!trainer_manager_->startTraining())
+            return std::unexpected("Failed to start training");
+        return {};
+    }
+
+    std::expected<void, std::string> VisualizerImpl::saveCheckpoint(
+        const std::filesystem::path& /*path*/) {
+        if (!trainer_manager_ || !trainer_manager_->getTrainer())
+            return std::unexpected("No active training session");
+        trainer_manager_->requestSaveCheckpoint();
+        return {};
     }
 
     void VisualizerImpl::performReset() {

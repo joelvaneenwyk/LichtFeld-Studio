@@ -48,6 +48,7 @@ namespace lfs::mcp {
         mutable std::mutex mutex_;
     };
 
+    void register_core_tools();
     void register_builtin_tools();
 
 } // namespace lfs::mcp

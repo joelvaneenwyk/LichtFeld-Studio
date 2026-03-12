@@ -61,6 +61,10 @@ namespace lfs::vis {
         std::expected<void, std::string> loadCheckpointForTraining(const std::filesystem::path& path) override;
         void consolidateModels() override;
         void clearScene() override;
+        core::Scene& getScene() override { return scene_manager_->getScene(); }
+        void postWork(std::function<void()> fn) override;
+        std::expected<void, std::string> startTraining() override;
+        std::expected<void, std::string> saveCheckpoint(const std::filesystem::path& path) override;
 
         // Getters for GUI (delegating to state manager)
         lfs::training::Trainer* getTrainer() const { return trainer_manager_->getTrainer(); }
@@ -215,6 +219,9 @@ namespace lfs::vis {
         };
         std::optional<CapabilityRequest> pending_capability_request_;
         std::mutex capability_request_mutex_;
+
+        std::mutex work_queue_mutex_;
+        std::vector<std::function<void()>> work_queue_;
 
         CallbackCleanup callback_cleanup_;
 

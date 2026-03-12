@@ -360,6 +360,7 @@ add_subdirectory(src/python)
 add_executable(${PROJECT_NAME}
     src/app/main.cpp
     src/app/application.cpp
+    src/app/mcp_gui_tools.cpp
     src/app/converter.cpp
     src/app/splash_screen.cpp
     resources/lichtfeld-studio.rc
@@ -377,6 +378,7 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_BINARY_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src/app/include  # For app headers
         ${CMAKE_CURRENT_SOURCE_DIR}/src              # For training/, visualizer/, etc.
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/rendering/include  # For rendering headers (MCP GUI tools)
         ${CMAKE_CURRENT_SOURCE_DIR}/external         # For external headers
 
         ${CUDAToolkit_INCLUDE_DIRS}
@@ -387,6 +389,7 @@ target_link_libraries(${PROJECT_NAME}
         PRIVATE
         lfs_visualizer
         lfs_mcp
+        lfs_rendering
         lfs_training
         lfs_geometry
         lfs_core

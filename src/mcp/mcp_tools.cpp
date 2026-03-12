@@ -254,7 +254,7 @@ namespace lfs::mcp {
         LOG_INFO("Generated {} MCP tools from CommandCenter", ops.size());
     }
 
-    void register_builtin_tools() {
+    void register_core_tools() {
         auto& registry = ToolRegistry::instance();
 
         registry.register_tool(
@@ -349,6 +349,10 @@ namespace lfs::mcp {
             });
 
         registry.generate_from_command_center();
+    }
+
+    void register_builtin_tools() {
+        register_core_tools();
         register_scene_tools();
     }
 

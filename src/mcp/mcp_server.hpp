@@ -29,9 +29,9 @@ namespace lfs::mcp {
 
         bool is_running() const { return running_.load(); }
 
-    private:
         JsonRpcResponse handle_request(const JsonRpcRequest& req);
 
+    private:
         JsonRpcResponse handle_initialize(const JsonRpcRequest& req);
         JsonRpcResponse handle_initialized(const JsonRpcRequest& req);
         JsonRpcResponse handle_tools_list(const JsonRpcRequest& req);
@@ -44,7 +44,7 @@ namespace lfs::mcp {
         std::string read_line();
 
         std::atomic<bool> running_{false};
-        bool initialized_{false};
+        std::atomic<bool> initialized_{false};
         McpCapabilities capabilities_;
         std::mutex io_mutex_;
     };

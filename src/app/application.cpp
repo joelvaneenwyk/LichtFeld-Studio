@@ -21,6 +21,9 @@
 #include "training/training_setup.hpp"
 #include "visualizer/visualizer.hpp"
 
+#include "app/mcp_gui_tools.hpp"
+#include "mcp/mcp_http_server.hpp"
+#include "mcp/mcp_tools.hpp"
 #include "python/runner.hpp"
 #include "visualizer/gui/panels/python_scripts_panel.hpp"
 #include <cstdlib>
@@ -267,7 +270,16 @@ namespace lfs::app {
                 }
             }
 
+            mcp::register_core_tools();
+            register_gui_scene_tools(viewer.get());
+
+            mcp::McpHttpServer mcp_http;
+            mcp_http.start();
+
             viewer->run();
+
+            mcp_http.stop();
+
             viewer.reset();
 
             core::Tensor::shutdown_memory_pool();

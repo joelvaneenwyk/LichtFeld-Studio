@@ -12,6 +12,7 @@ add_library(lfs_mcp ${LFS_MCP_LIB_TYPE}
     mcp_protocol.cpp
     mcp_tools.cpp
     mcp_server.cpp
+    mcp_http_server.cpp
     mcp_training_context.cpp
     llm_client.cpp
     selection_client.cpp

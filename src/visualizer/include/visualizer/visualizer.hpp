@@ -8,8 +8,13 @@
 
 #include <expected>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
+
+namespace lfs::core {
+    class Scene;
+}
 
 namespace lfs::core::param {
     struct TrainingParameters;
@@ -42,6 +47,11 @@ namespace lfs::vis {
         virtual std::expected<void, std::string> loadCheckpointForTraining(const std::filesystem::path& path) = 0;
         virtual void consolidateModels() = 0;
         virtual void clearScene() = 0;
+        virtual core::Scene& getScene() = 0;
+
+        virtual void postWork(std::function<void()> fn) = 0;
+        virtual std::expected<void, std::string> startTraining() = 0;
+        virtual std::expected<void, std::string> saveCheckpoint(const std::filesystem::path& path) = 0;
 
         virtual ~Visualizer() = default;
     };
