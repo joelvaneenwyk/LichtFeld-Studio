@@ -178,7 +178,7 @@ target_include_directories(lfs_visualizer
 target_link_libraries(lfs_visualizer
         PRIVATE
         lfs_core
-        $<$<PLATFORM_ID:Windows>:lfs_video>
+        lfs_video
         lfs_geometry
         lfs_io
         lfs_rendering
