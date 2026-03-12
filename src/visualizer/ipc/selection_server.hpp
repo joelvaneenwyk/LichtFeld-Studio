@@ -6,8 +6,9 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
-#include <future>
 #include <functional>
+#include <future>
+#include <memory>
 #include <mutex>
 #include <queue>
 #include <string>
@@ -97,13 +98,28 @@ namespace lfs::vis {
         static constexpr int SELECT_TIMEOUT_US = 100000;
         static constexpr int COMMAND_TIMEOUT_SEC = 5;
 
+        enum class QueuedCommandState : uint8_t {
+            Queued,
+            Executing,
+            Completed,
+            Cancelled,
+        };
+
         struct QueuedSelectionCommand {
             SelectionCommand command;
             std::promise<SelectionCommandCompletion> completion;
+            std::atomic<QueuedCommandState> state{QueuedCommandState::Queued};
+        };
+
+        struct PendingSelectionCommand {
+            std::future<SelectionCommandCompletion> future;
+            std::shared_ptr<QueuedSelectionCommand> command;
         };
 
         void server_loop();
-        [[nodiscard]] std::future<SelectionCommandCompletion> queue_command(SelectionCommand cmd);
+        [[nodiscard]] PendingSelectionCommand queue_command(SelectionCommand cmd);
+        void cancel_pending_commands(const char* error);
+        static bool cancel_command(const std::shared_ptr<QueuedSelectionCommand>& command, const char* error);
 
 #ifdef _WIN32
         void handle_client(HANDLE client_pipe);
@@ -123,7 +139,7 @@ namespace lfs::vis {
         std::thread server_thread_;
 
         std::mutex command_queue_mutex_;
-        std::queue<QueuedSelectionCommand> command_queue_;
+        std::queue<std::shared_ptr<QueuedSelectionCommand>> command_queue_;
 
         InvokeCapabilityCallback invoke_capability_callback_;
     };

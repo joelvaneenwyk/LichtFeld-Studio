@@ -27,6 +27,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct SDL_Window;
@@ -62,7 +63,8 @@ namespace lfs::vis {
         void consolidateModels() override;
         void clearScene() override;
         core::Scene& getScene() override { return scene_manager_->getScene(); }
-        void postWork(std::function<void()> fn) override;
+        bool postWork(WorkItem work) override;
+        void setShutdownRequestedCallback(std::function<void()> callback) override;
         std::expected<void, std::string> startTraining() override;
         std::expected<void, std::string> saveCheckpoint() override;
 
@@ -162,6 +164,8 @@ namespace lfs::vis {
         // Subsystem wiring
         void setupPythonBridge();
         void setupIpcServer();
+        void beginShutdown(std::string_view reason = "Viewer is shutting down");
+        void failPendingCapabilityRequest(const std::string& reason);
 
         // Plugin capability invocation (runs on main thread with scene context)
         [[nodiscard]] CapabilityInvokeResult processCapabilityRequest(const std::string& name, const std::string& args);
@@ -221,7 +225,12 @@ namespace lfs::vis {
         std::mutex capability_request_mutex_;
 
         std::mutex work_queue_mutex_;
-        std::vector<std::function<void()>> work_queue_;
+        std::vector<WorkItem> work_queue_;
+        bool accepting_work_ = true;
+        bool shutdown_started_ = false;
+
+        std::mutex shutdown_callback_mutex_;
+        std::function<void()> shutdown_requested_callback_;
 
         CallbackCleanup callback_cleanup_;
 

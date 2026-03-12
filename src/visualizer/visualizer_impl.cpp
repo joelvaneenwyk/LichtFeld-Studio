@@ -591,6 +591,55 @@ namespace lfs::vis {
         main_loop_->setShouldCloseCallback([this]() { return allowclose(); });
     }
 
+    void VisualizerImpl::beginShutdown(const std::string_view reason) {
+        std::vector<WorkItem> pending_work;
+        {
+            std::lock_guard lock(work_queue_mutex_);
+            if (shutdown_started_)
+                return;
+            shutdown_started_ = true;
+            accepting_work_ = false;
+            pending_work.swap(work_queue_);
+        }
+
+        const std::string reason_string(reason);
+        for (auto& work : pending_work) {
+            if (work.cancel)
+                work.cancel();
+        }
+
+        failPendingCapabilityRequest(reason_string);
+
+        std::function<void()> shutdown_callback;
+        {
+            std::lock_guard lock(shutdown_callback_mutex_);
+            shutdown_callback = shutdown_requested_callback_;
+        }
+        if (shutdown_callback)
+            shutdown_callback();
+    }
+
+    void VisualizerImpl::failPendingCapabilityRequest(const std::string& reason) {
+        std::optional<CapabilityRequest> pending_request;
+        {
+            std::lock_guard lock(capability_request_mutex_);
+            if (!pending_capability_request_)
+                return;
+            pending_request = pending_capability_request_;
+            pending_capability_request_.reset();
+        }
+
+        pending_request->result->success = false;
+        pending_request->result->result_json.clear();
+        pending_request->result->error = reason;
+
+        {
+            std::lock_guard done_lock(*pending_request->mtx);
+            *pending_request->done = true;
+        }
+        pending_request->cv->notify_one();
+    }
+
     void VisualizerImpl::setupEventHandlers() {
         using namespace lfs::core::events;
 
@@ -838,13 +887,15 @@ namespace lfs::vis {
 
         // Process MCP work queue
         {
-            std::vector<std::function<void()>> work;
+            std::vector<WorkItem> work;
             {
                 std::lock_guard lock(work_queue_mutex_);
                 work.swap(work_queue_);
             }
-            for (auto& fn : work)
-                fn();
+            for (auto& item : work) {
+                if (item.run)
+                    item.run();
+            }
         }
 
         // Process pending capability request from IPC thread
@@ -1031,10 +1082,12 @@ namespace lfs::vis {
         }
 
         if (!gui_manager_) {
+            beginShutdown();
             return true;
         }
 
         if (gui_manager_->isForceExit()) {
+            beginShutdown();
 #ifdef WIN32
             const HWND hwnd = GetConsoleWindow();
             Sleep(1);
@@ -1056,6 +1109,13 @@ namespace lfs::vis {
     }
 
     void VisualizerImpl::shutdown() {
+        beginShutdown();
+
+        if (selection_server_) {
+            selection_server_->stop();
+            selection_server_.reset();
+        }
+
         // Stop training before GPU resources are freed
         if (trainer_manager_) {
             if (trainer_manager_->isTrainingActive()) {
@@ -1168,9 +1228,17 @@ namespace lfs::vis {
         data_loader_->clearScene();
     }
 
-    void VisualizerImpl::postWork(std::function<void()> fn) {
+    bool VisualizerImpl::postWork(WorkItem work) {
         std::lock_guard lock(work_queue_mutex_);
-        work_queue_.push_back(std::move(fn));
+        if (!accepting_work_)
+            return false;
+        work_queue_.push_back(std::move(work));
+        return true;
+    }
+
+    void VisualizerImpl::setShutdownRequestedCallback(std::function<void()> callback) {
+        std::lock_guard lock(shutdown_callback_mutex_);
+        shutdown_requested_callback_ = std::move(callback);
     }
 
     std::expected<void, std::string> VisualizerImpl::startTraining() {

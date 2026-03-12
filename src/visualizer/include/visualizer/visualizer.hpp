@@ -39,6 +39,11 @@ namespace lfs::vis {
 
     class LFS_VIS_API Visualizer {
     public:
+        struct WorkItem {
+            std::function<void()> run;
+            std::function<void()> cancel;
+        };
+
         static std::unique_ptr<Visualizer> create(const ViewerOptions& options = {});
 
         virtual void run() = 0;
@@ -53,7 +58,8 @@ namespace lfs::vis {
         virtual SceneManager* getSceneManager() = 0;
         virtual RenderingManager* getRenderingManager() = 0;
 
-        virtual void postWork(std::function<void()> fn) = 0;
+        virtual bool postWork(WorkItem work) = 0;
+        virtual void setShutdownRequestedCallback(std::function<void()> callback) = 0;
         virtual std::expected<void, std::string> startTraining() = 0;
         virtual std::expected<void, std::string> saveCheckpoint() = 0;
 

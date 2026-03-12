@@ -92,6 +92,7 @@ namespace lfs::vis {
             return;
 
         running_ = false;
+        cancel_pending_commands("Selection server is shutting down");
 
         if (pipe_handle_ != INVALID_HANDLE_VALUE) {
             // Cancel any pending ConnectNamedPipe
@@ -140,20 +141,24 @@ namespace lfs::vis {
         try {
             const auto request = json::parse(buffer);
             const auto command = request.value("command", "");
+            const auto finish_selection_command = [this, client_pipe](PendingSelectionCommand pending) {
+                if (pending.future.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
+                    cancel_command(pending.command, "Selection update timed out");
+                    send_response(client_pipe, false, "Selection update timed out");
+                    return;
+                }
+
+                const auto result = pending.future.get();
+                send_response(client_pipe, result.success, result.error.empty() ? nullptr : result.error.c_str());
+            };
 
             if (command == "select_rect") {
-                auto completion = queue_command(SelectRectCmd{.x0 = request.value("x0", 0.0f),
-                                                               .y0 = request.value("y0", 0.0f),
-                                                               .x1 = request.value("x1", 0.0f),
-                                                               .y1 = request.value("y1", 0.0f),
-                                                               .camera_index = request.value("camera_index", 0),
-                                                               .mode = request.value("mode", "replace")});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_pipe, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_pipe, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(SelectRectCmd{.x0 = request.value("x0", 0.0f),
+                                                                     .y0 = request.value("y0", 0.0f),
+                                                                     .x1 = request.value("x1", 0.0f),
+                                                                     .y1 = request.value("y1", 0.0f),
+                                                                     .camera_index = request.value("camera_index", 0),
+                                                                     .mode = request.value("mode", "replace")}));
 
             } else if (command == "select_polygon") {
                 std::vector<float> points;
@@ -165,15 +170,9 @@ namespace lfs::vis {
                     send_response(client_pipe, false, validation_error.c_str());
                     return;
                 }
-                auto completion = queue_command(SelectPolygonCmd{.points = std::move(points),
-                                                                 .camera_index = request.value("camera_index", 0),
-                                                                 .mode = request.value("mode", "replace")});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_pipe, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_pipe, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(SelectPolygonCmd{.points = std::move(points),
+                                                                        .camera_index = request.value("camera_index", 0),
+                                                                        .mode = request.value("mode", "replace")}));
 
             } else if (command == "select_lasso") {
                 std::vector<float> points;
@@ -185,62 +184,32 @@ namespace lfs::vis {
                     send_response(client_pipe, false, validation_error.c_str());
                     return;
                 }
-                auto completion = queue_command(SelectLassoCmd{.points = std::move(points),
-                                                               .camera_index = request.value("camera_index", 0),
-                                                               .mode = request.value("mode", "replace")});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_pipe, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_pipe, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(SelectLassoCmd{.points = std::move(points),
+                                                                      .camera_index = request.value("camera_index", 0),
+                                                                      .mode = request.value("mode", "replace")}));
 
             } else if (command == "select_ring") {
-                auto completion = queue_command(SelectRingCmd{.x = request.value("x", 0.0f),
-                                                              .y = request.value("y", 0.0f),
-                                                              .camera_index = request.value("camera_index", 0),
-                                                              .mode = request.value("mode", "replace")});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_pipe, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_pipe, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(SelectRingCmd{.x = request.value("x", 0.0f),
+                                                                     .y = request.value("y", 0.0f),
+                                                                     .camera_index = request.value("camera_index", 0),
+                                                                     .mode = request.value("mode", "replace")}));
 
             } else if (command == "select_brush") {
-                auto completion = queue_command(SelectBrushCmd{.x = request.value("x", 0.0f),
-                                                               .y = request.value("y", 0.0f),
-                                                               .radius = request.value("radius", 20.0f),
-                                                               .camera_index = request.value("camera_index", 0),
-                                                               .mode = request.value("mode", "replace")});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_pipe, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_pipe, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(SelectBrushCmd{.x = request.value("x", 0.0f),
+                                                                      .y = request.value("y", 0.0f),
+                                                                      .radius = request.value("radius", 20.0f),
+                                                                      .camera_index = request.value("camera_index", 0),
+                                                                      .mode = request.value("mode", "replace")}));
 
             } else if (command == "apply_mask") {
                 std::vector<uint8_t> mask;
                 if (request.contains("mask")) {
                     mask = request["mask"].get<std::vector<uint8_t>>();
                 }
-                auto completion = queue_command(ApplyMaskCmd{.mask = std::move(mask)});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_pipe, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_pipe, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(ApplyMaskCmd{.mask = std::move(mask)}));
 
             } else if (command == "deselect_all") {
-                auto completion = queue_command(DeselectAllCmd{});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_pipe, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_pipe, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(DeselectAllCmd{}));
 
             } else if (command == "invoke_capability") {
                 const auto capability = request.value("capability", "");
@@ -322,6 +291,7 @@ namespace lfs::vis {
             return;
 
         running_ = false;
+        cancel_pending_commands("Selection server is shutting down");
 
         if (server_fd_ >= 0) {
             shutdown(server_fd_, SHUT_RDWR);
@@ -379,20 +349,24 @@ namespace lfs::vis {
         try {
             const auto request = json::parse(buffer);
             const auto command = request.value("command", "");
+            const auto finish_selection_command = [this, client_fd](PendingSelectionCommand pending) {
+                if (pending.future.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
+                    cancel_command(pending.command, "Selection update timed out");
+                    send_response(client_fd, false, "Selection update timed out");
+                    return;
+                }
+
+                const auto result = pending.future.get();
+                send_response(client_fd, result.success, result.error.empty() ? nullptr : result.error.c_str());
+            };
 
             if (command == "select_rect") {
-                auto completion = queue_command(SelectRectCmd{.x0 = request.value("x0", 0.0f),
-                                                               .y0 = request.value("y0", 0.0f),
-                                                               .x1 = request.value("x1", 0.0f),
-                                                               .y1 = request.value("y1", 0.0f),
-                                                               .camera_index = request.value("camera_index", 0),
-                                                               .mode = request.value("mode", "replace")});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_fd, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_fd, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(SelectRectCmd{.x0 = request.value("x0", 0.0f),
+                                                                     .y0 = request.value("y0", 0.0f),
+                                                                     .x1 = request.value("x1", 0.0f),
+                                                                     .y1 = request.value("y1", 0.0f),
+                                                                     .camera_index = request.value("camera_index", 0),
+                                                                     .mode = request.value("mode", "replace")}));
 
             } else if (command == "select_polygon") {
                 std::vector<float> points;
@@ -404,15 +378,9 @@ namespace lfs::vis {
                     send_response(client_fd, false, validation_error.c_str());
                     return;
                 }
-                auto completion = queue_command(SelectPolygonCmd{.points = std::move(points),
-                                                                 .camera_index = request.value("camera_index", 0),
-                                                                 .mode = request.value("mode", "replace")});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_fd, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_fd, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(SelectPolygonCmd{.points = std::move(points),
+                                                                        .camera_index = request.value("camera_index", 0),
+                                                                        .mode = request.value("mode", "replace")}));
 
             } else if (command == "select_lasso") {
                 std::vector<float> points;
@@ -424,62 +392,32 @@ namespace lfs::vis {
                     send_response(client_fd, false, validation_error.c_str());
                     return;
                 }
-                auto completion = queue_command(SelectLassoCmd{.points = std::move(points),
-                                                               .camera_index = request.value("camera_index", 0),
-                                                               .mode = request.value("mode", "replace")});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_fd, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_fd, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(SelectLassoCmd{.points = std::move(points),
+                                                                      .camera_index = request.value("camera_index", 0),
+                                                                      .mode = request.value("mode", "replace")}));
 
             } else if (command == "select_ring") {
-                auto completion = queue_command(SelectRingCmd{.x = request.value("x", 0.0f),
-                                                              .y = request.value("y", 0.0f),
-                                                              .camera_index = request.value("camera_index", 0),
-                                                              .mode = request.value("mode", "replace")});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_fd, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_fd, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(SelectRingCmd{.x = request.value("x", 0.0f),
+                                                                     .y = request.value("y", 0.0f),
+                                                                     .camera_index = request.value("camera_index", 0),
+                                                                     .mode = request.value("mode", "replace")}));
 
             } else if (command == "select_brush") {
-                auto completion = queue_command(SelectBrushCmd{.x = request.value("x", 0.0f),
-                                                               .y = request.value("y", 0.0f),
-                                                               .radius = request.value("radius", 20.0f),
-                                                               .camera_index = request.value("camera_index", 0),
-                                                               .mode = request.value("mode", "replace")});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_fd, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_fd, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(SelectBrushCmd{.x = request.value("x", 0.0f),
+                                                                      .y = request.value("y", 0.0f),
+                                                                      .radius = request.value("radius", 20.0f),
+                                                                      .camera_index = request.value("camera_index", 0),
+                                                                      .mode = request.value("mode", "replace")}));
 
             } else if (command == "apply_mask") {
                 std::vector<uint8_t> mask;
                 if (request.contains("mask")) {
                     mask = request["mask"].get<std::vector<uint8_t>>();
                 }
-                auto completion = queue_command(ApplyMaskCmd{.mask = std::move(mask)});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_fd, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_fd, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(ApplyMaskCmd{.mask = std::move(mask)}));
 
             } else if (command == "deselect_all") {
-                auto completion = queue_command(DeselectAllCmd{});
-                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
-                    send_response(client_fd, false, "Selection update timed out");
-                } else {
-                    const auto result = completion.get();
-                    send_response(client_fd, result.success, result.error.empty() ? nullptr : result.error.c_str());
-                }
+                finish_selection_command(queue_command(DeselectAllCmd{}));
 
             } else if (command == "invoke_capability") {
                 const auto capability = request.value("capability", "");
@@ -520,18 +458,52 @@ namespace lfs::vis {
 
     // Shared implementations (platform-independent)
 
-    std::future<SelectionCommandCompletion> SelectionServer::queue_command(SelectionCommand cmd) {
-        QueuedSelectionCommand queued{
-            .command = std::move(cmd),
-            .completion = std::promise<SelectionCommandCompletion>()};
-        auto future = queued.completion.get_future();
+    SelectionServer::PendingSelectionCommand SelectionServer::queue_command(SelectionCommand cmd) {
+        auto queued = std::make_shared<QueuedSelectionCommand>();
+        queued->command = std::move(cmd);
+        auto future = queued->completion.get_future();
+
+        if (!running_.load(std::memory_order_acquire)) {
+            queued->state.store(QueuedCommandState::Cancelled, std::memory_order_release);
+            queued->completion.set_value(SelectionCommandCompletion{.success = false, .error = "Selection server is shutting down"});
+            return PendingSelectionCommand{.future = std::move(future), .command = std::move(queued)};
+        }
+
         std::lock_guard lock(command_queue_mutex_);
-        command_queue_.push(std::move(queued));
-        return future;
+        if (!running_.load(std::memory_order_acquire)) {
+            queued->state.store(QueuedCommandState::Cancelled, std::memory_order_release);
+            queued->completion.set_value(SelectionCommandCompletion{.success = false, .error = "Selection server is shutting down"});
+            return PendingSelectionCommand{.future = std::move(future), .command = std::move(queued)};
+        }
+
+        command_queue_.push(queued);
+        return PendingSelectionCommand{.future = std::move(future), .command = std::move(queued)};
+    }
+
+    void SelectionServer::cancel_pending_commands(const char* error) {
+        std::queue<std::shared_ptr<QueuedSelectionCommand>> commands;
+        {
+            std::lock_guard lock(command_queue_mutex_);
+            std::swap(commands, command_queue_);
+        }
+
+        while (!commands.empty()) {
+            cancel_command(commands.front(), error);
+            commands.pop();
+        }
+    }
+
+    bool SelectionServer::cancel_command(const std::shared_ptr<QueuedSelectionCommand>& command, const char* error) {
+        auto expected = QueuedCommandState::Queued;
+        if (!command || !command->state.compare_exchange_strong(expected, QueuedCommandState::Cancelled))
+            return false;
+
+        command->completion.set_value(SelectionCommandCompletion{.success = false, .error = error});
+        return true;
     }
 
     void SelectionServer::process_pending_commands() {
-        std::queue<QueuedSelectionCommand> commands;
+        std::queue<std::shared_ptr<QueuedSelectionCommand>> commands;
         {
             std::lock_guard lock(command_queue_mutex_);
             std::swap(commands, command_queue_);
@@ -540,6 +512,10 @@ namespace lfs::vis {
         while (!commands.empty()) {
             auto queued = std::move(commands.front());
             commands.pop();
+
+            auto expected = QueuedCommandState::Queued;
+            if (!queued || !queued->state.compare_exchange_strong(expected, QueuedCommandState::Executing))
+                continue;
 
             SelectionCommandCompletion result{.success = true, .error = ""};
             try {
@@ -583,7 +559,7 @@ namespace lfs::vis {
                             cmd::DeselectAll{}.emit();
                         }
                     },
-                    queued.command);
+                    queued->command);
             } catch (const std::exception& e) {
                 LOG_ERROR("SelectionServer: failed to process queued selection command: {}", e.what());
                 result.success = false;
@@ -594,7 +570,8 @@ namespace lfs::vis {
                 result.error = "Unknown selection processing error";
             }
 
-            queued.completion.set_value(std::move(result));
+            queued->state.store(QueuedCommandState::Completed, std::memory_order_release);
+            queued->completion.set_value(std::move(result));
         }
     }
 

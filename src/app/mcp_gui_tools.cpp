@@ -6,8 +6,8 @@
 #include "app/mcp_gui_tools.hpp"
 
 #include "core/base64.hpp"
-#include "core/events.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
+#include "core/events.hpp"
 #include "core/logger.hpp"
 #include "core/scene.hpp"
 #include "core/splat_data_transform.hpp"
@@ -26,10 +26,13 @@
 
 #include <stb_image_write.h>
 
+#include <atomic>
 #include <cassert>
 #include <future>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/euler_angles.hpp>
@@ -41,6 +44,15 @@ namespace lfs::app {
     using mcp::ToolRegistry;
 
     namespace {
+
+        template <typename T>
+        struct dependent_false : std::false_type {};
+
+        template <typename T>
+        struct is_string_expected : std::false_type {};
+
+        template <typename T>
+        struct is_string_expected<std::expected<T, std::string>> : std::true_type {};
 
         struct TransformComponents {
             glm::vec3 translation{0.0f};
@@ -104,13 +116,54 @@ namespace lfs::app {
             }
         }
 
+        template <typename R>
+        R make_post_failure(const std::string& error) {
+            if constexpr (std::is_same_v<R, json>) {
+                return json{{"error", error}};
+            } else if constexpr (is_string_expected<R>::value) {
+                return std::unexpected(error);
+            } else {
+                static_assert(dependent_false<R>::value, "Unsupported post_and_wait return type");
+            }
+        }
+
         template <typename F>
         auto post_and_wait(vis::Visualizer* viewer, F&& fn) {
             using R = std::invoke_result_t<F>;
-            auto task = std::make_shared<std::packaged_task<R()>>(std::forward<F>(fn));
-            auto f = task->get_future();
-            viewer->postWork([task]() { (*task)(); });
-            return f.get();
+            constexpr const char* shutdown_error = "Viewer is shutting down";
+
+            auto task = std::make_shared<std::decay_t<F>>(std::forward<F>(fn));
+            auto promise = std::make_shared<std::promise<R>>();
+            auto completed = std::make_shared<std::atomic_bool>(false);
+            auto future = promise->get_future();
+
+            auto finish_with_value = [promise, completed](auto&& value) mutable {
+                if (!completed->exchange(true))
+                    promise->set_value(std::forward<decltype(value)>(value));
+            };
+            auto finish_with_exception = [promise, completed](std::exception_ptr error) {
+                if (!completed->exchange(true))
+                    promise->set_exception(std::move(error));
+            };
+
+            const bool posted = viewer->postWork(vis::Visualizer::WorkItem{
+                .run =
+                    [task, finish_with_value, finish_with_exception]() mutable {
+                        try {
+                            finish_with_value(std::invoke(*task));
+                        } catch (...) {
+                            finish_with_exception(std::current_exception());
+                        }
+                    },
+                .cancel =
+                    [finish_with_value]() mutable {
+                        finish_with_value(make_post_failure<R>(shutdown_error));
+                    }});
+
+            if (!posted)
+                return make_post_failure<R>(shutdown_error);
+
+            return future.get();
         }
 
         json vec3_to_json(const glm::vec3& value) {
@@ -230,17 +283,17 @@ namespace lfs::app {
                 {"name", node.name},
                 {"type", node_type_to_string(node.type)},
                 {"local", json{
-                    {"translation", vec3_to_json(local_components.translation)},
-                    {"rotation", vec3_to_json(local_components.rotation)},
-                    {"scale", vec3_to_json(local_components.scale)},
-                    {"matrix", mat4_to_json(local)},
-                }},
+                              {"translation", vec3_to_json(local_components.translation)},
+                              {"rotation", vec3_to_json(local_components.rotation)},
+                              {"scale", vec3_to_json(local_components.scale)},
+                              {"matrix", mat4_to_json(local)},
+                          }},
                 {"world", json{
-                    {"translation", vec3_to_json(world_components.translation)},
-                    {"rotation", vec3_to_json(world_components.rotation)},
-                    {"scale", vec3_to_json(world_components.scale)},
-                    {"matrix", mat4_to_json(world)},
-                }},
+                              {"translation", vec3_to_json(world_components.translation)},
+                              {"rotation", vec3_to_json(world_components.rotation)},
+                              {"scale", vec3_to_json(world_components.scale)},
+                              {"matrix", mat4_to_json(world)},
+                          }},
             };
         }
 
@@ -574,7 +627,10 @@ namespace lfs::app {
                 if (args.contains("strategy"))
                     params.optimization.strategy = args["strategy"].get<std::string>();
 
-                auto result = post_and_wait(viewer, [viewer, params, path]() {
+                auto immediate_params = params;
+                immediate_params.dataset.data_path.clear();
+
+                auto result = post_and_wait(viewer, [viewer, params = std::move(immediate_params), path]() {
                     viewer->setParameters(params);
                     return viewer->loadDataset(path);
                 });
@@ -1395,16 +1451,7 @@ namespace lfs::app {
                 const bool show = has_show ? args["show"].get<bool>() : false;
                 const bool use = has_use ? args["use"].get<bool>() : false;
 
-                return post_and_wait(viewer_impl, [viewer_impl, requested_node,
-                                                   min_bounds = *min_bounds,
-                                                   max_bounds = *max_bounds,
-                                                   translation = *translation,
-                                                   rotation = *rotation,
-                                                   scale = *scale,
-                                                   has_inverse, inverse,
-                                                   has_enabled, enabled,
-                                                   has_show, show,
-                                                   has_use, use]() -> json {
+                return post_and_wait(viewer_impl, [viewer_impl, requested_node, min_bounds = *min_bounds, max_bounds = *max_bounds, translation = *translation, rotation = *rotation, scale = *scale, has_inverse, inverse, has_enabled, enabled, has_show, show, has_use, use]() -> json {
                     auto* const scene_manager = viewer_impl->getSceneManager();
                     auto* const rendering_manager = viewer_impl->getRenderingManager();
                     if (!scene_manager)
