@@ -10,5 +10,6 @@ namespace lfs::vis {
 namespace lfs::app {
 
     void register_gui_scene_tools(lfs::vis::Visualizer* viewer);
+    void register_gui_scene_resources(lfs::vis::Visualizer* viewer);
 
 } // namespace lfs::app

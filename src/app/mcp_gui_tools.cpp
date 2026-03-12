@@ -18,8 +18,10 @@
 #include "python/python_runtime.hpp"
 #include "python/runner.hpp"
 #include "rendering/gs_rasterizer_tensor.hpp"
+#include "visualizer/gui/panels/python_console_panel.hpp"
 #include "visualizer/operation/undo_entry.hpp"
 #include "visualizer/operation/undo_history.hpp"
+#include "visualizer/gui_capabilities.hpp"
 #include "visualizer/rendering/rendering_manager.hpp"
 #include "visualizer/scene/scene_manager.hpp"
 #include "visualizer/visualizer.hpp"
@@ -31,6 +33,7 @@
 #include <future>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -40,7 +43,10 @@
 namespace lfs::app {
 
     using json = nlohmann::json;
+    using mcp::McpResource;
+    using mcp::McpResourceContent;
     using mcp::McpTool;
+    using mcp::ResourceRegistry;
     using mcp::ToolRegistry;
 
     namespace {
@@ -54,11 +60,7 @@ namespace lfs::app {
         template <typename T>
         struct is_string_expected<std::expected<T, std::string>> : std::true_type {};
 
-        struct TransformComponents {
-            glm::vec3 translation{0.0f};
-            glm::vec3 rotation{0.0f};
-            glm::vec3 scale{1.0f};
-        };
+        using TransformComponents = vis::cap::TransformComponents;
 
         void stbi_write_callback(void* context, void* data, int size) {
             auto* buf = static_cast<std::vector<uint8_t>*>(context);
@@ -114,6 +116,50 @@ namespace lfs::app {
             } catch (const std::exception& e) {
                 return std::unexpected(std::string("Render failed: ") + e.what());
             }
+        }
+
+        std::expected<std::vector<McpResourceContent>, std::string> single_json_resource(
+            const std::string& uri,
+            json payload) {
+            return std::vector<McpResourceContent>{
+                McpResourceContent{
+                    .uri = uri,
+                    .mime_type = "application/json",
+                    .content = payload.dump(2)}};
+        }
+
+        std::expected<std::vector<McpResourceContent>, std::string> single_blob_resource(
+            const std::string& uri,
+            const std::string& mime_type,
+            std::string base64_payload) {
+            return std::vector<McpResourceContent>{
+                McpResourceContent{
+                    .uri = uri,
+                    .mime_type = mime_type,
+                    .content = std::move(base64_payload)}};
+        }
+
+        json selection_state_json(core::Scene& scene, const int max_indices = 100000) {
+            auto mask = scene.getSelectionMask();
+            if (!mask)
+                return json{{"selected_count", 0}, {"indices", json::array()}, {"truncated", false}};
+
+            auto mask_vec = mask->to_vector_uint8();
+
+            int64_t count = 0;
+            std::vector<int64_t> indices;
+            for (size_t i = 0; i < mask_vec.size(); ++i) {
+                if (mask_vec[i] == 0)
+                    continue;
+                ++count;
+                if (static_cast<int>(indices.size()) < max_indices)
+                    indices.push_back(static_cast<int64_t>(i));
+            }
+
+            return json{
+                {"selected_count", count},
+                {"indices", indices},
+                {"truncated", count > static_cast<int64_t>(indices.size())}};
         }
 
         template <typename R>
@@ -212,35 +258,11 @@ namespace lfs::app {
         }
 
         TransformComponents decompose_transform(const glm::mat4& matrix) {
-            TransformComponents result;
-            result.translation = glm::vec3(matrix[3]);
-
-            glm::vec3 col0 = glm::vec3(matrix[0]);
-            glm::vec3 col1 = glm::vec3(matrix[1]);
-            glm::vec3 col2 = glm::vec3(matrix[2]);
-
-            result.scale.x = glm::length(col0);
-            result.scale.y = glm::length(col1);
-            result.scale.z = glm::length(col2);
-
-            if (result.scale.x > 0.0f)
-                col0 /= result.scale.x;
-            if (result.scale.y > 0.0f)
-                col1 /= result.scale.y;
-            if (result.scale.z > 0.0f)
-                col2 /= result.scale.z;
-
-            const glm::mat3 rotation_matrix(col0, col1, col2);
-            glm::extractEulerAngleXYZ(glm::mat4(rotation_matrix), result.rotation.x, result.rotation.y, result.rotation.z);
-
-            return result;
+            return vis::cap::decomposeTransform(matrix);
         }
 
         glm::mat4 compose_transform(const TransformComponents& components) {
-            const glm::mat4 translation = glm::translate(glm::mat4(1.0f), components.translation);
-            const glm::mat4 rotation = glm::eulerAngleXYZ(components.rotation.x, components.rotation.y, components.rotation.z);
-            const glm::mat4 scale = glm::scale(glm::mat4(1.0f), components.scale);
-            return translation * rotation * scale;
+            return vis::cap::composeTransform(components);
         }
 
         int64_t selected_gaussian_count(const core::Scene& scene) {
@@ -325,73 +347,46 @@ namespace lfs::app {
             return glm::vec3(value[0].get<float>(), value[1].get<float>(), value[2].get<float>());
         }
 
+        void show_python_console() {
+            core::events::cmd::ShowWindow{.window_name = "python_console", .show = true}.emit();
+        }
+
+        json text_payload_json(std::string text, const int max_chars, const bool tail = true) {
+            if (max_chars >= 0 && static_cast<int>(text.size()) > max_chars) {
+                const size_t keep = static_cast<size_t>(max_chars);
+                if (tail) {
+                    text = text.substr(text.size() - keep);
+                } else {
+                    text.resize(keep);
+                }
+                return json{
+                    {"text", std::move(text)},
+                    {"truncated", true},
+                };
+            }
+
+            return json{
+                {"text", std::move(text)},
+                {"truncated", false},
+            };
+        }
+
         std::expected<std::vector<std::string>, std::string> resolve_transform_targets(
             const vis::SceneManager& scene_manager,
             const std::optional<std::string>& requested_node) {
-
-            if (requested_node) {
-                if (!scene_manager.getScene().getNode(*requested_node))
-                    return std::unexpected("Node not found: " + *requested_node);
-                return std::vector<std::string>{*requested_node};
-            }
-
-            auto names = scene_manager.getSelectedNodeNames();
-            if (names.empty())
-                return std::unexpected("No node specified and no node selected");
-            return names;
+            return vis::cap::resolveTransformTargets(scene_manager, requested_node);
         }
 
         std::expected<core::NodeId, std::string> resolve_cropbox_parent_id(
             const vis::SceneManager& scene_manager,
             const std::optional<std::string>& requested_node) {
-
-            const auto& scene = scene_manager.getScene();
-            const auto resolve = [&scene](const core::SceneNode* node) -> std::expected<core::NodeId, std::string> {
-                if (!node)
-                    return std::unexpected("Node not found");
-                if (node->type == core::NodeType::CROPBOX)
-                    return node->parent_id;
-                if (node->type == core::NodeType::SPLAT || node->type == core::NodeType::POINTCLOUD)
-                    return node->id;
-                return std::unexpected("Crop boxes can only target splat or pointcloud nodes");
-            };
-
-            if (requested_node)
-                return resolve(scene.getNode(*requested_node));
-
-            const auto selected_name = scene_manager.getSelectedNodeName();
-            if (selected_name.empty())
-                return std::unexpected("No node specified and no node selected");
-            return resolve(scene.getNode(selected_name));
+            return vis::cap::resolveCropBoxParentId(scene_manager, requested_node);
         }
 
         std::expected<core::NodeId, std::string> resolve_cropbox_id(
             const vis::SceneManager& scene_manager,
             const std::optional<std::string>& requested_node) {
-
-            const auto& scene = scene_manager.getScene();
-            if (requested_node) {
-                const auto* const node = scene.getNode(*requested_node);
-                if (!node)
-                    return std::unexpected("Node not found: " + *requested_node);
-
-                if (node->type == core::NodeType::CROPBOX && node->cropbox)
-                    return node->id;
-
-                if (node->type == core::NodeType::SPLAT || node->type == core::NodeType::POINTCLOUD) {
-                    const core::NodeId cropbox_id = scene.getCropBoxForSplat(node->id);
-                    if (cropbox_id == core::NULL_NODE)
-                        return std::unexpected("Node has no crop box: " + *requested_node);
-                    return cropbox_id;
-                }
-
-                return std::unexpected("Node does not reference a crop box: " + *requested_node);
-            }
-
-            const core::NodeId cropbox_id = scene_manager.getSelectedNodeCropBoxId();
-            if (cropbox_id == core::NULL_NODE)
-                return std::unexpected("No crop box specified and no crop box selected");
-            return cropbox_id;
+            return vis::cap::resolveCropBoxId(scene_manager, requested_node);
         }
 
         json crop_box_info_json(const vis::SceneManager& scene_manager,
@@ -435,57 +430,7 @@ namespace lfs::app {
             vis::SceneManager& scene_manager,
             vis::RenderingManager* rendering_manager,
             const core::NodeId parent_id) {
-
-            auto& scene = scene_manager.getScene();
-            const auto* const parent = scene.getNodeById(parent_id);
-            if (!parent)
-                return std::unexpected("Target node not found");
-
-            if (parent->type != core::NodeType::SPLAT && parent->type != core::NodeType::POINTCLOUD)
-                return std::unexpected("Crop boxes can only be attached to splat or pointcloud nodes");
-
-            if (const core::NodeId existing = scene.getCropBoxForSplat(parent_id); existing != core::NULL_NODE) {
-                if (rendering_manager) {
-                    auto settings = rendering_manager->getSettings();
-                    settings.show_crop_box = true;
-                    rendering_manager->updateSettings(settings);
-                }
-                return existing;
-            }
-
-            const std::string cropbox_name = parent->name + "_cropbox";
-            const core::NodeId cropbox_id = scene.addCropBox(cropbox_name, parent_id);
-            if (cropbox_id == core::NULL_NODE)
-                return std::unexpected("Failed to create crop box for node: " + parent->name);
-
-            core::CropBoxData data;
-            glm::vec3 min_bounds, max_bounds;
-            if (scene.getNodeBounds(parent_id, min_bounds, max_bounds)) {
-                data.min = min_bounds;
-                data.max = max_bounds;
-            }
-            data.enabled = true;
-            scene.setCropBoxData(cropbox_id, data);
-
-            if (const auto* const cropbox_node = scene.getNodeById(cropbox_id)) {
-                core::events::state::PLYAdded{
-                    .name = cropbox_node->name,
-                    .node_gaussians = 0,
-                    .total_gaussians = scene.getTotalGaussianCount(),
-                    .is_visible = cropbox_node->visible,
-                    .parent_name = parent->name,
-                    .is_group = false,
-                    .node_type = static_cast<int>(core::NodeType::CROPBOX)}
-                    .emit();
-            }
-
-            if (rendering_manager) {
-                auto settings = rendering_manager->getSettings();
-                settings.show_crop_box = true;
-                rendering_manager->updateSettings(settings);
-            }
-
-            return cropbox_id;
+            return vis::cap::ensureCropBox(scene_manager, rendering_manager, parent_id);
         }
 
         std::expected<void, std::string> fit_cropbox_to_parent(
@@ -493,83 +438,14 @@ namespace lfs::app {
             vis::RenderingManager* rendering_manager,
             const core::NodeId cropbox_id,
             const bool use_percentile) {
-
-            auto& scene = scene_manager.getScene();
-            const auto* const cropbox_node = scene.getNodeById(cropbox_id);
-            if (!cropbox_node || cropbox_node->type != core::NodeType::CROPBOX || !cropbox_node->cropbox)
-                return std::unexpected("Invalid crop box target");
-
-            const auto* const parent = scene.getNodeById(cropbox_node->parent_id);
-            if (!parent)
-                return std::unexpected("Crop box parent not found");
-
-            glm::vec3 min_bounds, max_bounds;
-            bool bounds_valid = false;
-            if (parent->type == core::NodeType::SPLAT && parent->model && parent->model->size() > 0) {
-                bounds_valid = core::compute_bounds(*parent->model, min_bounds, max_bounds, 0.0f, use_percentile);
-            } else if (parent->type == core::NodeType::POINTCLOUD && parent->point_cloud && parent->point_cloud->size() > 0) {
-                bounds_valid = core::compute_bounds(*parent->point_cloud, min_bounds, max_bounds, 0.0f, use_percentile);
-            }
-
-            if (!bounds_valid)
-                return std::unexpected("Cannot compute bounds for node: " + parent->name);
-
-            const auto before_data = *cropbox_node->cropbox;
-            const auto before_transform = scene_manager.getNodeTransform(cropbox_node->name);
-
-            const glm::vec3 center = (min_bounds + max_bounds) * 0.5f;
-            const glm::vec3 half_size = (max_bounds - min_bounds) * 0.5f;
-
-            auto updated_data = before_data;
-            updated_data.min = -half_size;
-            updated_data.max = half_size;
-            scene.setCropBoxData(cropbox_id, updated_data);
-            scene.setNodeTransform(cropbox_node->name, glm::translate(glm::mat4(1.0f), center));
-
-            if (rendering_manager)
-                rendering_manager->markDirty(vis::DirtyFlag::SPLATS | vis::DirtyFlag::OVERLAY);
-
-            auto entry = std::make_unique<vis::op::CropBoxUndoEntry>(
-                scene_manager, cropbox_node->name, before_data, before_transform);
-            if (entry->hasChanges())
-                vis::op::undoHistory().push(std::move(entry));
-
-            return {};
+            return vis::cap::fitCropBoxToParent(scene_manager, rendering_manager, cropbox_id, use_percentile);
         }
 
         std::expected<void, std::string> reset_cropbox(
             vis::SceneManager& scene_manager,
             vis::RenderingManager* rendering_manager,
             const core::NodeId cropbox_id) {
-
-            auto& scene = scene_manager.getScene();
-            const auto* const cropbox_node = scene.getNodeById(cropbox_id);
-            if (!cropbox_node || cropbox_node->type != core::NodeType::CROPBOX || !cropbox_node->cropbox)
-                return std::unexpected("Invalid crop box target");
-
-            const auto before_data = *cropbox_node->cropbox;
-            const auto before_transform = scene_manager.getNodeTransform(cropbox_node->name);
-
-            auto reset_data = before_data;
-            reset_data.min = glm::vec3(-1.0f);
-            reset_data.max = glm::vec3(1.0f);
-            reset_data.inverse = false;
-            scene.setCropBoxData(cropbox_id, reset_data);
-            scene.setNodeTransform(cropbox_node->name, glm::mat4(1.0f));
-
-            if (rendering_manager) {
-                auto settings = rendering_manager->getSettings();
-                settings.use_crop_box = false;
-                rendering_manager->updateSettings(settings);
-                rendering_manager->markDirty(vis::DirtyFlag::SPLATS | vis::DirtyFlag::OVERLAY);
-            }
-
-            auto entry = std::make_unique<vis::op::CropBoxUndoEntry>(
-                scene_manager, cropbox_node->name, before_data, before_transform);
-            if (entry->hasChanges())
-                vis::op::undoHistory().push(std::move(entry));
-
-            return {};
+            return vis::cap::resetCropBox(scene_manager, rendering_manager, cropbox_id);
         }
 
     } // namespace
@@ -950,30 +826,13 @@ namespace lfs::app {
                 const int max_indices = args.value("max_indices", 100000);
 
                 return post_and_wait(viewer, [viewer, max_indices]() -> json {
-                    auto& scene = viewer->getScene();
-
-                    auto mask = scene.getSelectionMask();
-                    if (!mask)
-                        return json{{"success", true}, {"selected_count", 0}, {"indices", json::array()}};
-
-                    auto mask_vec = mask->to_vector_uint8();
-
-                    int64_t count = 0;
-                    std::vector<int64_t> indices;
-                    for (size_t i = 0; i < mask_vec.size(); ++i) {
-                        if (mask_vec[i] > 0) {
-                            ++count;
-                            if (static_cast<int>(indices.size()) < max_indices)
-                                indices.push_back(static_cast<int64_t>(i));
-                        }
-                    }
-
-                    json result;
-                    result["success"] = true;
-                    result["selected_count"] = count;
-                    result["indices"] = indices;
-                    result["truncated"] = count > static_cast<int64_t>(indices.size());
-                    return result;
+                    const auto selection = vis::cap::getSelectionSnapshot(viewer->getScene(), max_indices);
+                    return json{
+                        {"success", true},
+                        {"selected_count", selection.selected_count},
+                        {"indices", selection.indices},
+                        {"truncated", selection.truncated},
+                    };
                 });
             });
 
@@ -987,7 +846,8 @@ namespace lfs::app {
                     auto* const scene_manager = viewer_impl->getSceneManager();
                     if (!scene_manager)
                         return json{{"error", "Scene manager not initialized"}};
-                    scene_manager->deselectAllGaussians();
+                    if (auto result = vis::cap::clearGaussianSelection(*scene_manager); !result)
+                        return json{{"error", result.error()}};
                     return json{{"success", true}, {"selected_count", 0}};
                 });
             });
@@ -1081,13 +941,8 @@ namespace lfs::app {
                     if (!scene_manager)
                         return json{{"error", "Scene manager not initialized"}};
 
-                    if (!scene_manager->getScene().getNode(name))
-                        return json{{"error", "Node not found: " + name}};
-
-                    if (mode == "add")
-                        scene_manager->addToSelection(name);
-                    else
-                        scene_manager->selectNode(name);
+                    if (auto result = vis::cap::selectNode(*scene_manager, name, mode); !result)
+                        return json{{"error", result.error()}};
 
                     json nodes = json::array();
                     for (const auto& selected_name : scene_manager->getSelectedNodeNames()) {
@@ -1165,22 +1020,11 @@ namespace lfs::app {
                     if (!targets)
                         return json{{"error", targets.error()}};
 
-                    auto entry = std::make_unique<vis::op::SceneSnapshot>(*scene_manager, "mcp.transform.set");
-                    entry->captureTransforms(*targets);
-
-                    for (const auto& name : *targets) {
-                        auto components = decompose_transform(scene_manager->getScene().getNodeTransform(name));
-                        if (translation)
-                            components.translation = *translation;
-                        if (rotation)
-                            components.rotation = *rotation;
-                        if (scale)
-                            components.scale = *scale;
-                        scene_manager->setNodeTransform(name, compose_transform(components));
+                    if (auto result = vis::cap::setTransform(
+                            *scene_manager, *targets, translation, rotation, scale, "mcp.transform.set");
+                        !result) {
+                        return json{{"error", result.error()}};
                     }
-
-                    entry->captureAfter();
-                    vis::op::undoHistory().push(std::move(entry));
 
                     json nodes = json::array();
                     for (const auto& name : *targets) {
@@ -1219,17 +1063,11 @@ namespace lfs::app {
                     if (!targets)
                         return json{{"error", targets.error()}};
 
-                    auto entry = std::make_unique<vis::op::SceneSnapshot>(*scene_manager, "mcp.transform.translate");
-                    entry->captureTransforms(*targets);
-
-                    for (const auto& name : *targets) {
-                        auto transform = scene_manager->getScene().getNodeTransform(name);
-                        transform[3] += glm::vec4(value, 0.0f);
-                        scene_manager->setNodeTransform(name, transform);
+                    if (auto result = vis::cap::translateNodes(
+                            *scene_manager, *targets, value, "mcp.transform.translate");
+                        !result) {
+                        return json{{"error", result.error()}};
                     }
-
-                    entry->captureAfter();
-                    vis::op::undoHistory().push(std::move(entry));
 
                     json nodes = json::array();
                     for (const auto& name : *targets) {
@@ -1268,21 +1106,11 @@ namespace lfs::app {
                     if (!targets)
                         return json{{"error", targets.error()}};
 
-                    auto entry = std::make_unique<vis::op::SceneSnapshot>(*scene_manager, "mcp.transform.rotate");
-                    entry->captureTransforms(*targets);
-
-                    const glm::mat4 rotation_delta = glm::eulerAngleXYZ(value.x, value.y, value.z);
-                    for (const auto& name : *targets) {
-                        auto components = decompose_transform(scene_manager->getScene().getNodeTransform(name));
-                        const glm::mat4 current_rotation =
-                            glm::eulerAngleXYZ(components.rotation.x, components.rotation.y, components.rotation.z);
-                        const glm::mat4 new_rotation = rotation_delta * current_rotation;
-                        glm::extractEulerAngleXYZ(new_rotation, components.rotation.x, components.rotation.y, components.rotation.z);
-                        scene_manager->setNodeTransform(name, compose_transform(components));
+                    if (auto result = vis::cap::rotateNodes(
+                            *scene_manager, *targets, value, "mcp.transform.rotate");
+                        !result) {
+                        return json{{"error", result.error()}};
                     }
-
-                    entry->captureAfter();
-                    vis::op::undoHistory().push(std::move(entry));
 
                     json nodes = json::array();
                     for (const auto& name : *targets) {
@@ -1321,17 +1149,11 @@ namespace lfs::app {
                     if (!targets)
                         return json{{"error", targets.error()}};
 
-                    auto entry = std::make_unique<vis::op::SceneSnapshot>(*scene_manager, "mcp.transform.scale");
-                    entry->captureTransforms(*targets);
-
-                    for (const auto& name : *targets) {
-                        auto components = decompose_transform(scene_manager->getScene().getNodeTransform(name));
-                        components.scale *= value;
-                        scene_manager->setNodeTransform(name, compose_transform(components));
+                    if (auto result = vis::cap::scaleNodes(
+                            *scene_manager, *targets, value, "mcp.transform.scale");
+                        !result) {
+                        return json{{"error", result.error()}};
                     }
-
-                    entry->captureAfter();
-                    vis::op::undoHistory().push(std::move(entry));
 
                     json nodes = json::array();
                     for (const auto& name : *targets) {
@@ -1461,72 +1283,25 @@ namespace lfs::app {
                     if (!cropbox_id)
                         return json{{"error", cropbox_id.error()}};
 
-                    auto& scene = scene_manager->getScene();
-                    const auto* const cropbox_node = scene.getNodeById(*cropbox_id);
-                    if (!cropbox_node || !cropbox_node->cropbox)
-                        return json{{"error", "Invalid crop box target"}};
+                    vis::cap::CropBoxUpdate update;
+                    update.min_bounds = min_bounds;
+                    update.max_bounds = max_bounds;
+                    update.translation = translation;
+                    update.rotation = rotation;
+                    update.scale = scale;
+                    update.has_inverse = has_inverse;
+                    update.inverse = inverse;
+                    update.has_enabled = has_enabled;
+                    update.enabled = enabled;
+                    update.has_show = has_show;
+                    update.show = show;
+                    update.has_use = has_use;
+                    update.use = use;
 
-                    const auto before_data = *cropbox_node->cropbox;
-                    const auto before_transform = scene_manager->getNodeTransform(cropbox_node->name);
-
-                    auto updated_data = before_data;
-                    auto updated_components = decompose_transform(before_transform);
-
-                    bool cropbox_changed = false;
-                    bool transform_changed = false;
-
-                    if (min_bounds) {
-                        updated_data.min = *min_bounds;
-                        cropbox_changed = true;
-                    }
-                    if (max_bounds) {
-                        updated_data.max = *max_bounds;
-                        cropbox_changed = true;
-                    }
-                    if (has_inverse) {
-                        updated_data.inverse = inverse;
-                        cropbox_changed = true;
-                    }
-                    if (has_enabled) {
-                        updated_data.enabled = enabled;
-                        cropbox_changed = true;
-                    }
-                    if (translation) {
-                        updated_components.translation = *translation;
-                        transform_changed = true;
-                    }
-                    if (rotation) {
-                        updated_components.rotation = *rotation;
-                        transform_changed = true;
-                    }
-                    if (scale) {
-                        updated_components.scale = *scale;
-                        transform_changed = true;
-                    }
-
-                    if (cropbox_changed)
-                        scene.setCropBoxData(*cropbox_id, updated_data);
-                    if (transform_changed)
-                        scene_manager->setNodeTransform(cropbox_node->name, compose_transform(updated_components));
-
-                    if (rendering_manager && (cropbox_changed || transform_changed)) {
-                        rendering_manager->markDirty(vis::DirtyFlag::SPLATS | vis::DirtyFlag::OVERLAY);
-                    }
-
-                    if (rendering_manager && (has_show || has_use)) {
-                        auto settings = rendering_manager->getSettings();
-                        if (has_show)
-                            settings.show_crop_box = show;
-                        if (has_use)
-                            settings.use_crop_box = use;
-                        rendering_manager->updateSettings(settings);
-                    }
-
-                    if (cropbox_changed || transform_changed) {
-                        auto entry = std::make_unique<vis::op::CropBoxUndoEntry>(
-                            *scene_manager, cropbox_node->name, before_data, before_transform);
-                        if (entry->hasChanges())
-                            vis::op::undoHistory().push(std::move(entry));
+                    if (auto result = vis::cap::updateCropBox(
+                            *scene_manager, rendering_manager, *cropbox_id, update);
+                        !result) {
+                        return json{{"error", result.error()}};
                     }
 
                     return crop_box_info_json(*scene_manager, rendering_manager, *cropbox_id);
@@ -1592,6 +1367,184 @@ namespace lfs::app {
                         return json{{"error", result.error()}};
 
                     return crop_box_info_json(*scene_manager, rendering_manager, *cropbox_id);
+                });
+            });
+
+        // --- Editor tools ---
+
+        registry.register_tool(
+            McpTool{
+                .name = "editor.set_code",
+                .description = "Populate the visible Python editor with code in the integrated Python console",
+                .input_schema = {
+                    .type = "object",
+                    .properties = json{
+                        {"code", json{{"type", "string"}, {"description", "Python code to place into the visible editor"}}},
+                        {"show_console", json{{"type", "boolean"}, {"description", "Show the Python console window (default: true)"}}}},
+                    .required = {"code"}}},
+            [viewer_impl](const json& args) -> json {
+                const std::string code = args["code"].get<std::string>();
+                const bool show_console_window = args.value("show_console", true);
+
+                return post_and_wait(viewer_impl, [code, show_console_window]() -> json {
+                    if (show_console_window)
+                        show_python_console();
+
+                    auto& console = vis::gui::panels::PythonConsoleState::getInstance();
+                    auto* const editor = console.getEditor();
+                    if (!editor)
+                        return json{{"error", "Python editor not initialized"}};
+
+                    console.setEditorText(code);
+                    console.focusEditor();
+                    console.setModified(true);
+
+                    return json{
+                        {"success", true},
+                        {"chars", static_cast<int64_t>(code.size())},
+                        {"running", console.isScriptRunning()},
+                    };
+                });
+            });
+
+        registry.register_tool(
+            McpTool{
+                .name = "editor.run",
+                .description = "Run code through the integrated Python console; optionally replace the visible editor contents first",
+                .input_schema = {
+                    .type = "object",
+                    .properties = json{
+                        {"code", json{{"type", "string"}, {"description", "Optional Python code to set and run; defaults to current editor contents"}}},
+                        {"show_console", json{{"type", "boolean"}, {"description", "Show the Python console window (default: true)"}}}},
+                    .required = {}}},
+            [viewer_impl](const json& args) -> json {
+                const auto code = optional_string_arg(args, "code");
+                const bool show_console_window = args.value("show_console", true);
+
+                return post_and_wait(viewer_impl, [code, show_console_window]() -> json {
+                    if (show_console_window)
+                        show_python_console();
+
+                    auto& console = vis::gui::panels::PythonConsoleState::getInstance();
+                    auto* const editor = console.getEditor();
+                    if (!editor)
+                        return json{{"error", "Python editor not initialized"}};
+                    if (console.isScriptRunning())
+                        return json{{"error", "A script is already running"}};
+
+                    std::string code_to_run;
+                    if (code) {
+                        console.setEditorText(*code);
+                        console.focusEditor();
+                        console.setModified(true);
+                        code_to_run = *code;
+                    } else {
+                        code_to_run = console.getEditorTextStripped();
+                    }
+
+                    if (code_to_run.empty())
+                        return json{{"error", "Editor is empty"}};
+
+                    console.runScriptAsync(code_to_run);
+                    return json{
+                        {"success", true},
+                        {"chars", static_cast<int64_t>(code_to_run.size())},
+                        {"running", console.isScriptRunning()},
+                    };
+                });
+            });
+
+        registry.register_tool(
+            McpTool{
+                .name = "editor.get_code",
+                .description = "Read the current contents of the visible integrated Python editor",
+                .input_schema = {
+                    .type = "object",
+                    .properties = json{
+                        {"max_chars", json{{"type", "integer"}, {"description", "Maximum characters to return; defaults to no limit"}}}},
+                    .required = {}}},
+            [viewer_impl](const json& args) -> json {
+                const int max_chars = args.value("max_chars", -1);
+
+                return post_and_wait(viewer_impl, [max_chars]() -> json {
+                    auto& console = vis::gui::panels::PythonConsoleState::getInstance();
+                    auto* const editor = console.getEditor();
+                    if (!editor)
+                        return json{{"error", "Python editor not initialized"}};
+
+                    std::string code = console.getEditorText();
+                    auto result = text_payload_json(code, max_chars, false);
+                    result["success"] = true;
+                    result["total_chars"] = static_cast<int64_t>(code.size());
+                    result["modified"] = console.isModified();
+                    if (!console.getScriptPath().empty())
+                        result["path"] = console.getScriptPath().string();
+                    return result;
+                });
+            });
+
+        registry.register_tool(
+            McpTool{
+                .name = "editor.get_output",
+                .description = "Read captured output from the integrated Python console output terminal",
+                .input_schema = {
+                    .type = "object",
+                    .properties = json{
+                        {"max_chars", json{{"type", "integer"}, {"description", "Maximum characters to return (default: 20000)"}}},
+                        {"tail", json{{"type", "boolean"}, {"description", "Return the most recent output when truncated (default: true)"}}}},
+                    .required = {}}},
+            [viewer_impl](const json& args) -> json {
+                const int max_chars = args.value("max_chars", 20000);
+                const bool tail = args.value("tail", true);
+
+                return post_and_wait(viewer_impl, [max_chars, tail]() -> json {
+                    auto& console = vis::gui::panels::PythonConsoleState::getInstance();
+                    auto* const output = console.getOutputTerminal();
+                    if (!output)
+                        return json{{"error", "Python output terminal not initialized"}};
+
+                    std::string text = console.getOutputText();
+                    auto result = text_payload_json(text, max_chars, tail);
+                    result["success"] = true;
+                    result["total_chars"] = static_cast<int64_t>(text.size());
+                    result["running"] = console.isScriptRunning();
+                    return result;
+                });
+            });
+
+        registry.register_tool(
+            McpTool{
+                .name = "editor.is_running",
+                .description = "Check whether the integrated Python console is currently running a script",
+                .input_schema = {.type = "object", .properties = json::object(), .required = {}}},
+            [viewer_impl](const json&) -> json {
+                return post_and_wait(viewer_impl, []() -> json {
+                    auto& console = vis::gui::panels::PythonConsoleState::getInstance();
+                    return json{
+                        {"success", true},
+                        {"running", console.isScriptRunning()},
+                        {"modified", console.isModified()},
+                    };
+                });
+            });
+
+        registry.register_tool(
+            McpTool{
+                .name = "editor.interrupt",
+                .description = "Interrupt the currently running script in the integrated Python console",
+                .input_schema = {.type = "object", .properties = json::object(), .required = {}}},
+            [viewer_impl](const json&) -> json {
+                return post_and_wait(viewer_impl, []() -> json {
+                    auto& console = vis::gui::panels::PythonConsoleState::getInstance();
+                    const bool was_running = console.isScriptRunning();
+                    if (was_running)
+                        console.interruptScript();
+
+                    return json{
+                        {"success", true},
+                        {"was_running", was_running},
+                        {"running", console.isScriptRunning()},
+                    };
                 });
             });
 
@@ -1791,6 +1744,136 @@ namespace lfs::app {
             });
 
         LOG_INFO("Registered GUI-native MCP scene tools");
+    }
+
+    void register_gui_scene_resources(vis::Visualizer* viewer) {
+        assert(viewer);
+        auto* const viewer_impl = viewer;
+        auto& registry = ResourceRegistry::instance();
+
+        registry.register_resource(
+            McpResource{
+                .uri = "lichtfeld://render/current",
+                .name = "Current Render",
+                .description = "Base64-encoded PNG render from the current GUI scene using camera 0",
+                .mime_type = "image/png"},
+            [viewer](const std::string& uri) -> std::expected<std::vector<McpResourceContent>, std::string> {
+                auto result = post_and_wait(viewer, [viewer]() {
+                    return render_scene_to_base64(viewer->getScene(), 0);
+                });
+                if (!result)
+                    return std::unexpected(result.error());
+
+                return single_blob_resource(uri, "image/png", *result);
+            });
+
+        registry.register_resource_prefix(
+            "lichtfeld://render/camera/",
+            [viewer](const std::string& uri) -> std::expected<std::vector<McpResourceContent>, std::string> {
+                constexpr std::string_view camera_prefix = "lichtfeld://render/camera/";
+                int camera_index = 0;
+                const auto idx_str = uri.substr(camera_prefix.size());
+                try {
+                    camera_index = std::stoi(idx_str);
+                } catch (...) {
+                    return std::unexpected("Invalid camera resource URI: " + uri);
+                }
+
+                auto result = post_and_wait(viewer, [viewer, camera_index]() {
+                    return render_scene_to_base64(viewer->getScene(), camera_index);
+                });
+                if (!result)
+                    return std::unexpected(result.error());
+
+                return single_blob_resource(uri, "image/png", *result);
+            });
+
+        registry.register_resource(
+            McpResource{
+                .uri = "lichtfeld://gaussians/stats",
+                .name = "Gaussian Statistics",
+                .description = "Statistics about the current GUI scene Gaussian model",
+                .mime_type = "application/json"},
+            [viewer](const std::string& uri) -> std::expected<std::vector<McpResourceContent>, std::string> {
+                return post_and_wait(viewer, [viewer, uri]() -> std::expected<std::vector<McpResourceContent>, std::string> {
+                    json payload;
+                    auto& scene = viewer->getScene();
+                    payload["count"] = scene.getTotalGaussianCount();
+
+                    const auto selection = selection_state_json(scene, 0);
+                    payload["selected_count"] = selection.value("selected_count", 0);
+
+                    if (auto* cc = event::command_center()) {
+                        auto snapshot = cc->snapshot();
+                        payload["is_refining"] = snapshot.is_refining;
+                    }
+
+                    return single_json_resource(uri, std::move(payload));
+                });
+            });
+
+        registry.register_resource(
+            McpResource{
+                .uri = "lichtfeld://selection/current",
+                .name = "Current Selection",
+                .description = "Current Gaussian selection from the shared GUI scene",
+                .mime_type = "application/json"},
+            [viewer](const std::string& uri) -> std::expected<std::vector<McpResourceContent>, std::string> {
+                return post_and_wait(viewer, [viewer, uri]() -> std::expected<std::vector<McpResourceContent>, std::string> {
+                    auto payload = selection_state_json(viewer->getScene());
+                    payload["success"] = true;
+                    return single_json_resource(uri, std::move(payload));
+                });
+            });
+
+        registry.register_resource(
+            McpResource{
+                .uri = "lichtfeld://scene/nodes",
+                .name = "Scene Nodes",
+                .description = "All nodes from the shared GUI scene",
+                .mime_type = "application/json"},
+            [viewer_impl](const std::string& uri) -> std::expected<std::vector<McpResourceContent>, std::string> {
+                return post_and_wait(viewer_impl, [viewer_impl, uri]() -> std::expected<std::vector<McpResourceContent>, std::string> {
+                    auto* const scene_manager = viewer_impl->getSceneManager();
+                    if (!scene_manager)
+                        return std::unexpected("Scene manager not initialized");
+
+                    const auto& scene = scene_manager->getScene();
+                    json nodes = json::array();
+                    for (const auto* const node : scene.getNodes()) {
+                        if (!node)
+                            continue;
+                        nodes.push_back(node_summary_json(scene, *node));
+                    }
+
+                    return single_json_resource(uri, json{{"count", nodes.size()}, {"nodes", std::move(nodes)}});
+                });
+            });
+
+        registry.register_resource(
+            McpResource{
+                .uri = "lichtfeld://scene/selected_nodes",
+                .name = "Selected Scene Nodes",
+                .description = "Currently selected nodes from the shared GUI scene",
+                .mime_type = "application/json"},
+            [viewer_impl](const std::string& uri) -> std::expected<std::vector<McpResourceContent>, std::string> {
+                return post_and_wait(viewer_impl, [viewer_impl, uri]() -> std::expected<std::vector<McpResourceContent>, std::string> {
+                    auto* const scene_manager = viewer_impl->getSceneManager();
+                    if (!scene_manager)
+                        return std::unexpected("Scene manager not initialized");
+
+                    const auto& scene = scene_manager->getScene();
+                    json nodes = json::array();
+                    for (const auto& name : scene_manager->getSelectedNodeNames()) {
+                        if (const auto* const node = scene.getNode(name))
+                            nodes.push_back(node_summary_json(scene, *node));
+                    }
+
+                    return single_json_resource(uri, json{{"count", nodes.size()}, {"nodes", std::move(nodes)}});
+                });
+            });
+
+        LOG_INFO("Registered GUI-native MCP scene resources");
     }
 
 } // namespace lfs::app

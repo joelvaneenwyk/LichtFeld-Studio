@@ -2,8 +2,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "mcp_server.hpp"
+#include "core/base64.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
-#include "mcp_training_context.hpp"
 
 #include <cassert>
 
@@ -117,33 +117,13 @@ namespace lfs::mcp {
     }
 
     JsonRpcResponse McpServer::handle_resources_list(const JsonRpcRequest& req) {
-        json resources = json::array();
+        auto resources = ResourceRegistry::instance().list_resources();
+        json resources_json = json::array();
+        for (const auto& resource : resources) {
+            resources_json.push_back(resource_to_json(resource));
+        }
 
-        resources.push_back(resource_to_json(McpResource{
-            .uri = "lichtfeld://scene/state",
-            .name = "Training State",
-            .description = "Current training state snapshot (iteration, loss, gaussians)",
-            .mime_type = "application/json"}));
-
-        resources.push_back(resource_to_json(McpResource{
-            .uri = "lichtfeld://render/current",
-            .name = "Current Render",
-            .description = "Base64-encoded PNG render from camera 0",
-            .mime_type = "image/png"}));
-
-        resources.push_back(resource_to_json(McpResource{
-            .uri = "lichtfeld://training/loss_curve",
-            .name = "Loss Curve",
-            .description = "Training loss history",
-            .mime_type = "application/json"}));
-
-        resources.push_back(resource_to_json(McpResource{
-            .uri = "lichtfeld://gaussians/stats",
-            .name = "Gaussian Statistics",
-            .description = "Statistics about the Gaussian model",
-            .mime_type = "application/json"}));
-
-        return make_success_response(req.id, json{{"resources", resources}});
+        return make_success_response(req.id, json{{"resources", resources_json}});
     }
 
     JsonRpcResponse McpServer::handle_resources_read(const JsonRpcRequest& req) {
@@ -155,81 +135,34 @@ namespace lfs::mcp {
         }
 
         std::string uri = (*req.params)["uri"].get<std::string>();
-
-        json content;
-
-        if (uri == "lichtfeld://scene/state") {
-            auto* cc = event::command_center();
-            if (cc) {
-                auto snapshot = cc->snapshot();
-                content["iteration"] = snapshot.iteration;
-                content["max_iterations"] = snapshot.max_iterations;
-                content["num_gaussians"] = snapshot.num_gaussians;
-                content["loss"] = snapshot.loss;
-                content["is_running"] = snapshot.is_running;
-                content["is_paused"] = snapshot.is_paused;
-                content["is_refining"] = snapshot.is_refining;
-            } else {
-                content["error"] = "Training system not initialized";
-            }
-        } else if (uri == "lichtfeld://render/current" || uri.starts_with("lichtfeld://render/camera/")) {
-            int camera_index = 0;
-            if (uri.starts_with("lichtfeld://render/camera/")) {
-                auto idx_str = uri.substr(strlen("lichtfeld://render/camera/"));
-                try {
-                    camera_index = std::stoi(idx_str);
-                } catch (...) {
-                    camera_index = 0;
-                }
-            }
-
-            auto result = TrainingContext::instance().render_to_base64(camera_index);
-            if (result) {
-                json render_result;
-                render_result["contents"] = json::array();
-                render_result["contents"].push_back(json{
-                    {"uri", uri},
-                    {"mimeType", "image/png"},
-                    {"blob", *result}});
-                return make_success_response(req.id, render_result);
-            } else {
-                content["error"] = result.error();
-            }
-        } else if (uri == "lichtfeld://training/loss_curve") {
-            auto* cc = event::command_center();
-            if (cc) {
-                auto history = cc->loss_history();
-                json points = json::array();
-                for (const auto& p : history) {
-                    points.push_back(json{{"iteration", p.iteration}, {"loss", p.loss}});
-                }
-                content["points"] = points;
-                content["count"] = history.size();
-            } else {
-                content["error"] = "Training system not initialized";
-            }
-        } else if (uri == "lichtfeld://gaussians/stats") {
-            auto* cc = event::command_center();
-            if (cc) {
-                auto snapshot = cc->snapshot();
-                content["count"] = snapshot.num_gaussians;
-                content["is_refining"] = snapshot.is_refining;
-            } else {
-                content["error"] = "Training system not initialized";
-            }
-        } else {
+        auto contents = ResourceRegistry::instance().read_resource(uri);
+        if (!contents) {
             return make_error_response(
                 req.id,
                 JsonRpcError::INVALID_PARAMS,
-                "Unknown resource URI: " + uri);
+                contents.error());
         }
 
         json result;
         result["contents"] = json::array();
-        result["contents"].push_back(json{
-            {"uri", uri},
-            {"mimeType", "application/json"},
-            {"text", content.dump(2)}});
+        for (const auto& content : *contents) {
+            json item{{"uri", content.uri}};
+            if (content.mime_type)
+                item["mimeType"] = *content.mime_type;
+
+            if (std::holds_alternative<std::string>(content.content)) {
+                const auto& string_content = std::get<std::string>(content.content);
+                const bool is_blob = content.mime_type && content.mime_type->starts_with("image/");
+                if (is_blob) {
+                    item["blob"] = string_content;
+                } else {
+                    item["text"] = string_content;
+                }
+            } else {
+                item["blob"] = core::base64_encode(std::get<std::vector<uint8_t>>(content.content));
+            }
+            result["contents"].push_back(std::move(item));
+        }
 
         return make_success_response(req.id, result);
     }

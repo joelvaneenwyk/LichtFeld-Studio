@@ -255,6 +255,24 @@ namespace lfs::python {
             return registered_tools_;
         }
 
+        std::vector<std::string> list_all_tools() {
+            auto tools = mcp::ToolRegistry::instance().list_tools();
+            std::vector<std::string> names;
+            names.reserve(tools.size());
+            for (const auto& tool : tools) {
+                names.push_back(tool.name);
+            }
+            return names;
+        }
+
+        nb::list describe_all_tools() {
+            nb::list result;
+            for (const auto& tool : mcp::ToolRegistry::instance().list_tools()) {
+                result.append(json_to_python(mcp::tool_to_json(tool)));
+            }
+            return result;
+        }
+
     } // namespace
 
     void register_mcp(nb::module_& m) {
@@ -275,8 +293,31 @@ namespace lfs::python {
             "Unregister an MCP tool");
 
         mcp_module.def(
-            "list_tools", []() { return list_python_tools(); },
-            "List all registered Python MCP tools");
+            "list_tools", []() { return list_all_tools(); },
+            "List all registered shared capabilities/tools");
+
+        mcp_module.def(
+            "list_python_tools", []() { return list_python_tools(); },
+            "List Python-provided MCP tools registered through this module");
+
+        mcp_module.def(
+            "describe_tools", []() { return describe_all_tools(); },
+            "Describe all registered shared capabilities/tools");
+
+        mcp_module.def(
+            "call_tool",
+            [](const std::string& name, nb::handle args) {
+                mcp::json json_args = mcp::json::object();
+                if (!args.is_none()) {
+                    json_args = python_value_to_json(args);
+                    if (!json_args.is_object()) {
+                        throw nb::value_error("call_tool args must be a dict/object");
+                    }
+                }
+                return json_to_python(mcp::ToolRegistry::instance().call_tool(name, json_args));
+            },
+            nb::arg("name"), nb::arg("args") = nb::none(),
+            "Invoke a registered shared capability/tool");
 
         mcp_module.def(
             "tool",

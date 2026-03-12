@@ -2,59 +2,13 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#define GLM_ENABLE_EXPERIMENTAL
-
 #include "transform_ops.hpp"
 #include "operation/undo_entry.hpp"
 #include "operation/undo_history.hpp"
 #include "operator/operator_registry.hpp"
-#include "scene/scene_manager.hpp"
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtx/euler_angles.hpp>
+#include "visualizer/gui_capabilities.hpp"
 
 namespace lfs::vis::op {
-
-    namespace {
-
-        struct TransformComponents {
-            glm::vec3 translation{0.0f};
-            glm::vec3 rotation{0.0f};
-            glm::vec3 scale{1.0f};
-        };
-
-        TransformComponents decompose(const glm::mat4& m) {
-            TransformComponents result;
-            result.translation = glm::vec3(m[3]);
-
-            glm::vec3 col0 = glm::vec3(m[0]);
-            glm::vec3 col1 = glm::vec3(m[1]);
-            glm::vec3 col2 = glm::vec3(m[2]);
-
-            result.scale.x = glm::length(col0);
-            result.scale.y = glm::length(col1);
-            result.scale.z = glm::length(col2);
-
-            if (result.scale.x > 0.0f)
-                col0 /= result.scale.x;
-            if (result.scale.y > 0.0f)
-                col1 /= result.scale.y;
-            if (result.scale.z > 0.0f)
-                col2 /= result.scale.z;
-
-            const glm::mat3 rot(col0, col1, col2);
-            glm::extractEulerAngleXYZ(glm::mat4(rot), result.rotation.x, result.rotation.y, result.rotation.z);
-
-            return result;
-        }
-
-        glm::mat4 compose(const TransformComponents& c) {
-            const glm::mat4 t = glm::translate(glm::mat4(1.0f), c.translation);
-            const glm::mat4 r = glm::eulerAngleXYZ(c.rotation.x, c.rotation.y, c.rotation.z);
-            const glm::mat4 s = glm::scale(glm::mat4(1.0f), c.scale);
-            return t * r * s;
-        }
-
-    } // namespace
 
     const OperatorDescriptor TransformSetOperator::DESCRIPTOR = {
         .builtin_id = BuiltinOp::TransformSet,
@@ -77,22 +31,12 @@ namespace lfs::vis::op {
             return OperatorResult::CANCELLED;
         }
 
-        auto entry = std::make_unique<SceneSnapshot>(ctx.scene(), "transform.set");
-        entry->captureTransforms(nodes);
-
         const auto translation = props.get_or<glm::vec3>("translation", glm::vec3(0.0f));
         const auto rotation = props.get_or<glm::vec3>("rotation", glm::vec3(0.0f));
         const auto scale = props.get_or<glm::vec3>("scale", glm::vec3(1.0f));
-        const glm::mat4 new_transform = compose({translation, rotation, scale});
-
-        for (const auto& name : nodes) {
-            ctx.scene().setNodeTransform(name, new_transform);
-        }
-
-        entry->captureAfter();
-        undoHistory().push(std::move(entry));
-
-        return OperatorResult::FINISHED;
+        const auto result = cap::setTransform(
+            ctx.scene(), nodes, translation, rotation, scale, "transform.set");
+        return result ? OperatorResult::FINISHED : OperatorResult::CANCELLED;
     }
 
     const OperatorDescriptor TransformTranslateOperator::DESCRIPTOR = {
@@ -116,21 +60,9 @@ namespace lfs::vis::op {
             return OperatorResult::CANCELLED;
         }
 
-        auto entry = std::make_unique<SceneSnapshot>(ctx.scene(), "transform.translate");
-        entry->captureTransforms(nodes);
-
         const auto value = props.get_or<glm::vec3>("value", glm::vec3(0.0f));
-
-        for (const auto& name : nodes) {
-            glm::mat4 transform = ctx.scene().getNodeTransform(name);
-            transform[3] += glm::vec4(value, 0.0f);
-            ctx.scene().setNodeTransform(name, transform);
-        }
-
-        entry->captureAfter();
-        undoHistory().push(std::move(entry));
-
-        return OperatorResult::FINISHED;
+        const auto result = cap::translateNodes(ctx.scene(), nodes, value, "transform.translate");
+        return result ? OperatorResult::FINISHED : OperatorResult::CANCELLED;
     }
 
     const OperatorDescriptor TransformRotateOperator::DESCRIPTOR = {
@@ -154,25 +86,9 @@ namespace lfs::vis::op {
             return OperatorResult::CANCELLED;
         }
 
-        auto entry = std::make_unique<SceneSnapshot>(ctx.scene(), "transform.rotate");
-        entry->captureTransforms(nodes);
-
         const auto value = props.get_or<glm::vec3>("value", glm::vec3(0.0f));
-        const glm::mat4 rotation_delta = glm::eulerAngleXYZ(value.x, value.y, value.z);
-
-        for (const auto& name : nodes) {
-            auto components = decompose(ctx.scene().getNodeTransform(name));
-            const glm::mat4 current_rotation =
-                glm::eulerAngleXYZ(components.rotation.x, components.rotation.y, components.rotation.z);
-            const glm::mat4 new_rotation = rotation_delta * current_rotation;
-            glm::extractEulerAngleXYZ(new_rotation, components.rotation.x, components.rotation.y, components.rotation.z);
-            ctx.scene().setNodeTransform(name, compose(components));
-        }
-
-        entry->captureAfter();
-        undoHistory().push(std::move(entry));
-
-        return OperatorResult::FINISHED;
+        const auto result = cap::rotateNodes(ctx.scene(), nodes, value, "transform.rotate");
+        return result ? OperatorResult::FINISHED : OperatorResult::CANCELLED;
     }
 
     const OperatorDescriptor TransformScaleOperator::DESCRIPTOR = {
@@ -196,21 +112,9 @@ namespace lfs::vis::op {
             return OperatorResult::CANCELLED;
         }
 
-        auto entry = std::make_unique<SceneSnapshot>(ctx.scene(), "transform.scale");
-        entry->captureTransforms(nodes);
-
         const auto value = props.get_or<glm::vec3>("value", glm::vec3(1.0f));
-
-        for (const auto& name : nodes) {
-            auto components = decompose(ctx.scene().getNodeTransform(name));
-            components.scale *= value;
-            ctx.scene().setNodeTransform(name, compose(components));
-        }
-
-        entry->captureAfter();
-        undoHistory().push(std::move(entry));
-
-        return OperatorResult::FINISHED;
+        const auto result = cap::scaleNodes(ctx.scene(), nodes, value, "transform.scale");
+        return result ? OperatorResult::FINISHED : OperatorResult::CANCELLED;
     }
 
     const OperatorDescriptor TransformApplyBatchOperator::DESCRIPTOR = {

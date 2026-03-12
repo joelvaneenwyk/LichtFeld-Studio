@@ -438,6 +438,39 @@ namespace lfs::vis::gui::panels {
         return editor_.get();
     }
 
+    void PythonConsoleState::setEditorText(const std::string& text) {
+        if (editor_) {
+            editor_->setText(text);
+        }
+    }
+
+    void PythonConsoleState::focusEditor() {
+        if (editor_) {
+            editor_->focus();
+        }
+    }
+
+    std::string PythonConsoleState::getEditorText() const {
+        if (!editor_) {
+            return {};
+        }
+        return editor_->getText();
+    }
+
+    std::string PythonConsoleState::getEditorTextStripped() const {
+        if (!editor_) {
+            return {};
+        }
+        return editor_->getTextStripped();
+    }
+
+    std::string PythonConsoleState::getOutputText() const {
+        if (!output_terminal_) {
+            return {};
+        }
+        return output_terminal_->getAllText();
+    }
+
     namespace {
         float g_splitter_ratio = 0.6f;
         constexpr float MIN_PANE_HEIGHT = 100.0f;

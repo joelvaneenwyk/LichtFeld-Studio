@@ -66,6 +66,7 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
         gui/gizmo_transform.cpp
         gui/html_viewer_export.cpp
         gui/ui_widgets.cpp
+        gui_capabilities.cpp
         gui/panels/windows_console_utils.cpp
         gui/panels/tools_panel.cpp
         gui/panels/python_console_panel.cpp

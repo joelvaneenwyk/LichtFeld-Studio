@@ -27,6 +27,7 @@
 #include "training/trainer.hpp"
 #include "training/training_manager.hpp"
 #include "training/training_setup.hpp"
+#include "visualizer/gui_capabilities.hpp"
 #include <algorithm>
 #include <format>
 #include <glm/gtc/quaternion.hpp>
@@ -2617,60 +2618,25 @@ namespace lfs::vis {
     }
 
     void SceneManager::handleAddCropBox(const std::string& node_name) {
-        const auto* node = scene_.getNode(node_name);
-        if (!node)
-            return;
-
-        if (node->type != core::NodeType::SPLAT && node->type != core::NodeType::POINTCLOUD) {
-            LOG_WARN("Cannot add cropbox to node type: {}", static_cast<int>(node->type));
+        auto parent_id = cap::resolveCropBoxParentId(*this, std::optional<std::string>(node_name));
+        if (!parent_id) {
+            LOG_WARN("Cannot add cropbox for '{}': {}", node_name, parent_id.error());
             return;
         }
 
-        // Check if cropbox already exists for this node
-        const core::NodeId existing = scene_.getCropBoxForSplat(node->id);
-        if (existing != core::NULL_NODE) {
-            LOG_DEBUG("Cropbox already exists for '{}'", node_name);
-            selectNode(scene_.getNodeById(existing)->name);
+        auto cropbox_id = cap::ensureCropBox(*this, services().renderingOrNull(), *parent_id);
+        if (!cropbox_id) {
+            LOG_WARN("Failed to add cropbox for '{}': {}", node_name, cropbox_id.error());
             return;
         }
 
-        const std::string cropbox_name = node_name + "_cropbox";
-        const core::NodeId cropbox_id = scene_.addCropBox(cropbox_name, node->id);
-        if (cropbox_id == core::NULL_NODE)
+        const auto* cropbox = scene_.getNodeById(*cropbox_id);
+        const auto* parent = scene_.getNodeById(*parent_id);
+        if (!cropbox || !parent)
             return;
 
-        // Fit cropbox to parent bounds and enable it
-        core::CropBoxData data;
-        glm::vec3 min_bounds, max_bounds;
-        if (scene_.getNodeBounds(node->id, min_bounds, max_bounds)) {
-            data.min = min_bounds;
-            data.max = max_bounds;
-        }
-        data.enabled = true;
-        scene_.setCropBoxData(cropbox_id, data);
-
-        // Emit PLYAdded event
-        if (const auto* cropbox = scene_.getNodeById(cropbox_id)) {
-            state::PLYAdded{
-                .name = cropbox->name,
-                .node_gaussians = 0,
-                .total_gaussians = scene_.getTotalGaussianCount(),
-                .is_visible = cropbox->visible,
-                .parent_name = node_name,
-                .is_group = false,
-                .node_type = static_cast<int>(core::NodeType::CROPBOX)}
-                .emit();
-        }
-
-        // Enable cropbox visibility in render settings
-        if (auto* rm = services().renderingOrNull()) {
-            auto settings = rm->getSettings();
-            settings.show_crop_box = true;
-            rm->updateSettings(settings);
-        }
-
-        selectNode(cropbox_name);
-        LOG_INFO("Added cropbox '{}' as child of '{}'", cropbox_name, node_name);
+        selectNode(cropbox->name);
+        LOG_INFO("Added cropbox '{}' as child of '{}'", cropbox->name, parent->name);
     }
 
     void SceneManager::handleAddCropEllipsoid(const std::string& node_name) {
@@ -2739,42 +2705,20 @@ namespace lfs::vis {
     }
 
     void SceneManager::handleResetCropBox() {
-        const core::SceneNode* cropbox_node = nullptr;
-        {
-            std::shared_lock slock(selection_.mutex());
-            for (const auto id : selection_.selectedNodeIds()) {
-                const auto* node = scene_.getNodeById(id);
-                if (node && node->type == core::NodeType::CROPBOX && node->cropbox) {
-                    cropbox_node = node;
-                    break;
-                }
-            }
-        }
-
-        if (!cropbox_node) {
-            LOG_WARN("No cropbox selected for reset");
+        auto cropbox_id = cap::resolveCropBoxId(*this, std::nullopt);
+        if (!cropbox_id) {
+            LOG_WARN("No cropbox selected for reset: {}", cropbox_id.error());
             return;
         }
 
-        auto* node = scene_.getMutableNode(cropbox_node->name);
-        if (!node || !node->cropbox)
+        if (auto result = cap::resetCropBox(*this, services().renderingOrNull(), *cropbox_id); !result) {
+            LOG_WARN("Failed to reset cropbox: {}", result.error());
             return;
-
-        node->cropbox->min = glm::vec3(-1.0f);
-        node->cropbox->max = glm::vec3(1.0f);
-        node->cropbox->inverse = false;
-        node->local_transform = glm::mat4(1.0f);
-        node->transform_dirty = true;
-
-        if (auto* rm = services().renderingOrNull()) {
-            auto settings = rm->getSettings();
-            settings.use_crop_box = false;
-            rm->updateSettings(settings);
-            rm->markDirty(DirtyFlag::SPLATS | DirtyFlag::OVERLAY);
         }
 
-        scene_.notifyMutation(core::Scene::MutationType::MODEL_CHANGED);
-        LOG_INFO("Reset cropbox '{}'", cropbox_node->name);
+        if (const auto* cropbox = scene_.getNodeById(*cropbox_id)) {
+            LOG_INFO("Reset cropbox '{}'", cropbox->name);
+        }
     }
 
     void SceneManager::handleResetEllipsoid() {
@@ -2816,77 +2760,23 @@ namespace lfs::vis {
     }
 
     void SceneManager::updateCropBoxToFitScene(const bool use_percentile) {
-        if (!services().renderingOrNull())
-            return;
-
-        // Find selected cropbox
-        const core::SceneNode* cropbox_node = nullptr;
-        const core::SceneNode* target_node = nullptr;
-
-        {
-            std::shared_lock slock(selection_.mutex());
-            for (const auto id : selection_.selectedNodeIds()) {
-                const auto* node = scene_.getNodeById(id);
-                if (!node)
-                    continue;
-                if (node->type == core::NodeType::CROPBOX && node->cropbox) {
-                    cropbox_node = node;
-                    if (node->parent_id != core::NULL_NODE)
-                        target_node = scene_.getNodeById(node->parent_id);
-                    break;
-                }
-            }
-        }
-
-        if (!cropbox_node) {
-            LOG_WARN("No cropbox found in selection");
+        auto cropbox_id = cap::resolveCropBoxId(*this, std::nullopt);
+        if (!cropbox_id) {
+            LOG_WARN("No cropbox found in selection: {}", cropbox_id.error());
             return;
         }
 
-        if (!target_node) {
-            for (const auto* node : scene_.getNodes()) {
-                if (node->type == core::NodeType::SPLAT || node->type == core::NodeType::POINTCLOUD) {
-                    target_node = node;
-                    break;
-                }
-            }
-        }
-
-        if (!target_node) {
-            LOG_WARN("No target splat found for cropbox '{}'", cropbox_node->name);
+        if (auto result = cap::fitCropBoxToParent(*this, services().renderingOrNull(), *cropbox_id, use_percentile);
+            !result) {
+            LOG_WARN("Failed to fit cropbox: {}", result.error());
             return;
         }
 
-        glm::vec3 min_bounds, max_bounds;
-        bool bounds_valid = false;
-
-        if (target_node->type == core::NodeType::SPLAT && target_node->model && target_node->model->size() > 0) {
-            bounds_valid = lfs::core::compute_bounds(*target_node->model, min_bounds, max_bounds, 0.0f, use_percentile);
-        } else if (target_node->type == core::NodeType::POINTCLOUD && target_node->point_cloud && target_node->point_cloud->size() > 0) {
-            bounds_valid = lfs::core::compute_bounds(*target_node->point_cloud, min_bounds, max_bounds, 0.0f, use_percentile);
+        const auto* cropbox = scene_.getNodeById(*cropbox_id);
+        const auto* parent = cropbox ? scene_.getNodeById(cropbox->parent_id) : nullptr;
+        if (cropbox && parent) {
+            LOG_INFO("Fit '{}' to '{}'", cropbox->name, parent->name);
         }
-
-        if (!bounds_valid) {
-            LOG_WARN("Cannot compute bounds for '{}'", target_node->name);
-            return;
-        }
-
-        const glm::vec3 center = (min_bounds + max_bounds) * 0.5f;
-        const glm::vec3 half_size = (max_bounds - min_bounds) * 0.5f;
-
-        if (auto* node = scene_.getMutableNode(cropbox_node->name); node && node->cropbox) {
-            node->cropbox->min = -half_size;
-            node->cropbox->max = half_size;
-            node->local_transform = glm::translate(glm::mat4(1.0f), center);
-            node->transform_dirty = true;
-        }
-
-        if (auto* rm = services().renderingOrNull())
-            rm->markDirty(DirtyFlag::SPLATS | DirtyFlag::OVERLAY);
-
-        LOG_INFO("Fit '{}' to '{}': center({:.2f},{:.2f},{:.2f}) size({:.2f},{:.2f},{:.2f})",
-                 cropbox_node->name, target_node->name, center.x, center.y, center.z,
-                 half_size.x * 2, half_size.y * 2, half_size.z * 2);
     }
 
     void SceneManager::updateEllipsoidToFitScene(const bool use_percentile) {

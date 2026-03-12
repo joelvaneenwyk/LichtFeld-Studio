@@ -281,9 +281,11 @@ namespace lfs::app {
             }
 
             mcp::register_core_tools();
+            mcp::register_core_resources();
             register_gui_scene_tools(viewer.get());
+            register_gui_scene_resources(viewer.get());
 
-            mcp::McpHttpServer mcp_http({.enable_resources = false});
+            mcp::McpHttpServer mcp_http({.enable_resources = true});
             viewer->setShutdownRequestedCallback([&mcp_http]() {
                 mcp_http.stop();
             });
