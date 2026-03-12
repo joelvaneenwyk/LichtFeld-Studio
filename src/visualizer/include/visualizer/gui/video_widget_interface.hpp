@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include "io/video/video_encoder_interface.hpp"
 
 #include <functional>
@@ -22,10 +23,10 @@ namespace lfs::gui {
     using VideoWidgetFactory = std::function<std::unique_ptr<IVideoExtractorWidget>()>;
     using VideoEncoderFactory = std::function<std::unique_ptr<io::video::IVideoEncoder>()>;
 
-    void setVideoWidgetFactory(VideoWidgetFactory factory);
-    std::unique_ptr<IVideoExtractorWidget> createVideoWidget();
+    LFS_VIS_API void setVideoWidgetFactory(VideoWidgetFactory factory);
+    LFS_VIS_API std::unique_ptr<IVideoExtractorWidget> createVideoWidget();
 
-    void setVideoEncoderFactory(VideoEncoderFactory factory);
-    std::unique_ptr<io::video::IVideoEncoder> createVideoEncoder();
+    LFS_VIS_API void setVideoEncoderFactory(VideoEncoderFactory factory);
+    LFS_VIS_API std::unique_ptr<io::video::IVideoEncoder> createVideoEncoder();
 
 } // namespace lfs::gui

@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include "io/video_frame_extractor.hpp"
 #include "io/video_player.hpp"
 #include "visualizer/gui/video_widget_interface.hpp"
@@ -13,10 +14,10 @@
 #include <filesystem>
 #include <functional>
 #include <glad/glad.h>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
-#include <mutex>
 
 struct ImDrawList;
 struct ImVec2;
@@ -43,7 +44,7 @@ namespace lfs::gui {
         std::string filename_pattern = "frame_%d";
     };
 
-    class VideoExtractorDialog : public IVideoExtractorWidget {
+    class LFS_VIS_API VideoExtractorDialog : public IVideoExtractorWidget {
     public:
         VideoExtractorDialog();
         ~VideoExtractorDialog() override;
