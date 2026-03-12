@@ -25,6 +25,18 @@ namespace lfs::mcp {
         [[nodiscard]] std::expected<void, std::string> select_rect(float x0, float y0, float x1, float y1,
                                                                    const std::string& mode = "replace",
                                                                    int camera_index = 0);
+        [[nodiscard]] std::expected<void, std::string> select_polygon(const std::vector<float>& points,
+                                                                      const std::string& mode = "replace",
+                                                                      int camera_index = 0);
+        [[nodiscard]] std::expected<void, std::string> select_lasso(const std::vector<float>& points,
+                                                                    const std::string& mode = "replace",
+                                                                    int camera_index = 0);
+        [[nodiscard]] std::expected<void, std::string> select_ring(float x, float y,
+                                                                   const std::string& mode = "replace",
+                                                                   int camera_index = 0);
+        [[nodiscard]] std::expected<void, std::string> select_brush(float x, float y, float radius,
+                                                                    const std::string& mode = "replace",
+                                                                    int camera_index = 0);
 
         [[nodiscard]] std::expected<void, std::string> apply_mask(const std::vector<uint8_t>& mask);
 

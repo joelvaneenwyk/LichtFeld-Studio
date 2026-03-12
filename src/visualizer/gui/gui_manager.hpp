@@ -26,7 +26,7 @@
 #include "gui/startup_overlay.hpp"
 #include "gui/ui_context.hpp"
 #include "gui/utils/drag_drop_native.hpp"
-#include "windows/video_extractor_dialog.hpp"
+#include "visualizer/gui/video_widget_interface.hpp"
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -127,8 +127,7 @@ namespace lfs::vis {
 
             // Owned components
             std::unique_ptr<RmlModalOverlay> rml_modal_overlay_;
-            std::unique_ptr<lfs::gui::VideoExtractorDialog> video_extractor_dialog_;
-            std::optional<std::jthread> video_extraction_thread_;
+            std::unique_ptr<lfs::gui::IVideoExtractorWidget> video_widget_;
 
             // UI state only
             std::unordered_map<std::string, bool> window_states_;

@@ -25,13 +25,38 @@ namespace lfs::vis {
         std::string mode;
     };
 
+    struct SelectPolygonCmd {
+        std::vector<float> points;
+        int camera_index;
+        std::string mode;
+    };
+
+    struct SelectLassoCmd {
+        std::vector<float> points;
+        int camera_index;
+        std::string mode;
+    };
+
+    struct SelectRingCmd {
+        float x, y;
+        int camera_index;
+        std::string mode;
+    };
+
+    struct SelectBrushCmd {
+        float x, y, radius;
+        int camera_index;
+        std::string mode;
+    };
+
     struct ApplyMaskCmd {
         std::vector<uint8_t> mask;
     };
 
     struct DeselectAllCmd {};
 
-    using SelectionCommand = std::variant<SelectRectCmd, ApplyMaskCmd, DeselectAllCmd>;
+    using SelectionCommand =
+        std::variant<SelectRectCmd, SelectPolygonCmd, SelectLassoCmd, SelectRingCmd, SelectBrushCmd, ApplyMaskCmd, DeselectAllCmd>;
 
     struct CapabilityInvokeResult {
         bool success = false;

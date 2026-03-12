@@ -21,8 +21,11 @@
 #include "training/training_setup.hpp"
 #include "visualizer/visualizer.hpp"
 
+#include "io/video/video_encoder.hpp"
 #include "python/runner.hpp"
 #include "visualizer/gui/panels/python_scripts_panel.hpp"
+#include "visualizer/gui/video_widget_interface.hpp"
+#include "visualizer/gui/windows/video_extractor_dialog.hpp"
 #include <cstdlib>
 #include <cuda_runtime.h>
 #include <rasterization_api.h>
@@ -233,6 +236,13 @@ namespace lfs::app {
             }
 
             lfs::event::CommandCenterBridge::instance().set(&lfs::training::CommandCenter::instance());
+
+            lfs::gui::setVideoWidgetFactory([] {
+                return std::make_unique<lfs::gui::VideoExtractorDialog>();
+            });
+            lfs::gui::setVideoEncoderFactory([] {
+                return std::make_unique<lfs::io::video::VideoEncoder>();
+            });
 
             auto viewer = vis::Visualizer::create({
                 .title = "LichtFeld Studio",

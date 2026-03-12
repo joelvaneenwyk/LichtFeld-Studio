@@ -38,6 +38,19 @@ namespace lfs::vis::gui {
     using ToolType = lfs::vis::ToolType;
 
     constexpr float GIZMO_AXIS_LIMIT = 0.0001f;
+
+    namespace {
+        [[nodiscard]] lfs::rendering::SelectionMode toRenderingSelectionMode(const SelectionSubMode mode) {
+            switch (mode) {
+            case SelectionSubMode::Rectangle: return lfs::rendering::SelectionMode::Rectangle;
+            case SelectionSubMode::Polygon: return lfs::rendering::SelectionMode::Polygon;
+            case SelectionSubMode::Lasso: return lfs::rendering::SelectionMode::Lasso;
+            case SelectionSubMode::Rings: return lfs::rendering::SelectionMode::Rings;
+            case SelectionSubMode::Centers:
+            default: return lfs::rendering::SelectionMode::Centers;
+            }
+        }
+    } // namespace
     constexpr float MIN_GIZMO_SCALE = 0.001f;
 
     namespace {
@@ -292,26 +305,11 @@ namespace lfs::vis::gui {
 
             if (is_selection_mode) {
                 if (auto* const rm = ctx.viewer->getRenderingManager()) {
-                    auto mode = lfs::rendering::SelectionMode::Centers;
-                    switch (selection_mode_) {
-                    case SelectionSubMode::Centers: mode = lfs::rendering::SelectionMode::Centers; break;
-                    case SelectionSubMode::Rectangle: mode = lfs::rendering::SelectionMode::Rectangle; break;
-                    case SelectionSubMode::Polygon: mode = lfs::rendering::SelectionMode::Polygon; break;
-                    case SelectionSubMode::Lasso: mode = lfs::rendering::SelectionMode::Lasso; break;
-                    case SelectionSubMode::Rings: mode = lfs::rendering::SelectionMode::Rings; break;
-                    }
-                    rm->setSelectionMode(mode);
+                    rm->setSelectionMode(toRenderingSelectionMode(selection_mode_));
 
                     if (selection_mode_ != previous_selection_mode_) {
                         if (selection_tool)
                             selection_tool->onSelectionModeChanged();
-
-                        if (selection_mode_ == SelectionSubMode::Rings) {
-                            auto settings = rm->getSettings();
-                            settings.show_rings = true;
-                            settings.show_center_markers = false;
-                            rm->updateSettings(settings);
-                        }
                         previous_selection_mode_ = selection_mode_;
                     }
                 }
@@ -1312,15 +1310,7 @@ namespace lfs::vis::gui {
         selection_mode_ = mode;
 
         if (auto* rm = viewer_->getRenderingManager()) {
-            lfs::rendering::SelectionMode rm_mode = lfs::rendering::SelectionMode::Centers;
-            switch (mode) {
-            case SelectionSubMode::Centers: rm_mode = lfs::rendering::SelectionMode::Centers; break;
-            case SelectionSubMode::Rectangle: rm_mode = lfs::rendering::SelectionMode::Rectangle; break;
-            case SelectionSubMode::Polygon: rm_mode = lfs::rendering::SelectionMode::Polygon; break;
-            case SelectionSubMode::Lasso: rm_mode = lfs::rendering::SelectionMode::Lasso; break;
-            case SelectionSubMode::Rings: rm_mode = lfs::rendering::SelectionMode::Rings; break;
-            }
-            rm->setSelectionMode(rm_mode);
+            rm->setSelectionMode(toRenderingSelectionMode(mode));
         }
     }
 

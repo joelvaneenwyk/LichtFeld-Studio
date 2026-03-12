@@ -391,6 +391,7 @@ target_link_libraries(${PROJECT_NAME}
         lfs_geometry
         lfs_core
         lfs_io
+        lfs_video
         fastlfs_backend
         lfs_python_utils
 

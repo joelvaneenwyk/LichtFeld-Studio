@@ -209,8 +209,10 @@ namespace lfs::vis {
         // Brush selection on GPU - mouse_x/y in image coords (not window coords!)
         void brushSelect(float mouse_x, float mouse_y, float radius, lfs::core::Tensor& selection_out);
 
-        // Apply crop filter to selection - filters out selections outside crop box/ellipsoid
+        // Apply crop/selection filters to a boolean preview or selection mask.
         void applyCropFilter(lfs::core::Tensor& selection);
+        void applyDepthFilter(lfs::core::Tensor& selection);
+        void applySelectionFilters(lfs::core::Tensor& selection, bool use_crop_filter, bool use_depth_filter);
 
         void setBrushState(bool active, float x, float y, float radius, bool add_mode = true,
                            lfs::core::Tensor* selection_tensor = nullptr,
@@ -236,11 +238,11 @@ namespace lfs::vis {
             add_mode = rect_add_mode_;
         }
 
-        // Polygon preview (world-space points)
-        void setPolygonPreview(const std::vector<glm::vec3>& world_points, bool closed, bool add_mode = true);
+        // Polygon preview (render-space points, same coordinate system as screen_positions output)
+        void setPolygonPreview(const std::vector<std::pair<float, float>>& points, bool closed, bool add_mode = true);
         void clearPolygonPreview();
         [[nodiscard]] bool isPolygonPreviewActive() const { return polygon_preview_active_; }
-        [[nodiscard]] const std::vector<glm::vec3>& getPolygonWorldPoints() const { return polygon_world_points_; }
+        [[nodiscard]] const std::vector<std::pair<float, float>>& getPolygonPoints() const { return polygon_points_; }
         [[nodiscard]] bool isPolygonClosed() const { return polygon_closed_; }
         [[nodiscard]] bool isPolygonAddMode() const { return polygon_add_mode_; }
 
@@ -261,6 +263,7 @@ namespace lfs::vis {
             preview_selection_ = nullptr;
             markDirty(DirtyFlag::SELECTION);
         }
+        void clearSelectionPreviews();
 
         // Selection mode for brush tool
         void setSelectionMode(lfs::rendering::SelectionMode mode) { selection_mode_ = mode; }
@@ -394,7 +397,7 @@ namespace lfs::vis {
         bool rect_add_mode_ = true;
 
         bool polygon_preview_active_ = false;
-        std::vector<glm::vec3> polygon_world_points_;
+        std::vector<std::pair<float, float>> polygon_points_;
         bool polygon_closed_ = false;
         bool polygon_add_mode_ = true;
 

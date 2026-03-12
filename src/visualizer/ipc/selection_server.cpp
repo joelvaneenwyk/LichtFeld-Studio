@@ -21,8 +21,19 @@ namespace lfs::vis {
     using json = nlohmann::json;
     using namespace lfs::core::events;
 
-#ifdef _WIN32
     namespace {
+        [[nodiscard]] std::string validate_selection_points(const std::vector<float>& points,
+                                                            const char* selection_kind) {
+            if (points.size() < 6) {
+                return std::string(selection_kind) + " requires at least 3 points";
+            }
+            if ((points.size() % 2) != 0) {
+                return std::string(selection_kind) + " points must be x/y pairs";
+            }
+            return {};
+        }
+
+#ifdef _WIN32
         std::string socket_path_to_pipe_name(const std::string& socket_path) {
             // Convert Unix socket path to Windows named pipe
             // /tmp/lichtfeld-selection.sock -> \\.\pipe\lichtfeld-selection
@@ -36,8 +47,8 @@ namespace lfs::vis {
             }
             return R"(\\.\pipe\)" + name;
         }
-    } // namespace
 #endif
+    } // namespace
 
     SelectionServer::SelectionServer() = default;
 
@@ -136,6 +147,51 @@ namespace lfs::vis {
                                             .y1 = request.value("y1", 0.0f),
                                             .camera_index = request.value("camera_index", 0),
                                             .mode = request.value("mode", "replace")});
+                send_response(client_pipe, true);
+
+            } else if (command == "select_polygon") {
+                std::vector<float> points;
+                if (request.contains("points")) {
+                    points = request["points"].get<std::vector<float>>();
+                }
+                if (const auto validation_error = validate_selection_points(points, "Polygon");
+                    !validation_error.empty()) {
+                    send_response(client_pipe, false, validation_error.c_str());
+                    return;
+                }
+                queue_command(SelectPolygonCmd{.points = std::move(points),
+                                               .camera_index = request.value("camera_index", 0),
+                                               .mode = request.value("mode", "replace")});
+                send_response(client_pipe, true);
+
+            } else if (command == "select_lasso") {
+                std::vector<float> points;
+                if (request.contains("points")) {
+                    points = request["points"].get<std::vector<float>>();
+                }
+                if (const auto validation_error = validate_selection_points(points, "Lasso");
+                    !validation_error.empty()) {
+                    send_response(client_pipe, false, validation_error.c_str());
+                    return;
+                }
+                queue_command(SelectLassoCmd{.points = std::move(points),
+                                             .camera_index = request.value("camera_index", 0),
+                                             .mode = request.value("mode", "replace")});
+                send_response(client_pipe, true);
+
+            } else if (command == "select_ring") {
+                queue_command(SelectRingCmd{.x = request.value("x", 0.0f),
+                                            .y = request.value("y", 0.0f),
+                                            .camera_index = request.value("camera_index", 0),
+                                            .mode = request.value("mode", "replace")});
+                send_response(client_pipe, true);
+
+            } else if (command == "select_brush") {
+                queue_command(SelectBrushCmd{.x = request.value("x", 0.0f),
+                                             .y = request.value("y", 0.0f),
+                                             .radius = request.value("radius", 20.0f),
+                                             .camera_index = request.value("camera_index", 0),
+                                             .mode = request.value("mode", "replace")});
                 send_response(client_pipe, true);
 
             } else if (command == "apply_mask") {
@@ -297,6 +353,51 @@ namespace lfs::vis {
                                             .mode = request.value("mode", "replace")});
                 send_response(client_fd, true);
 
+            } else if (command == "select_polygon") {
+                std::vector<float> points;
+                if (request.contains("points")) {
+                    points = request["points"].get<std::vector<float>>();
+                }
+                if (const auto validation_error = validate_selection_points(points, "Polygon");
+                    !validation_error.empty()) {
+                    send_response(client_fd, false, validation_error.c_str());
+                    return;
+                }
+                queue_command(SelectPolygonCmd{.points = std::move(points),
+                                               .camera_index = request.value("camera_index", 0),
+                                               .mode = request.value("mode", "replace")});
+                send_response(client_fd, true);
+
+            } else if (command == "select_lasso") {
+                std::vector<float> points;
+                if (request.contains("points")) {
+                    points = request["points"].get<std::vector<float>>();
+                }
+                if (const auto validation_error = validate_selection_points(points, "Lasso");
+                    !validation_error.empty()) {
+                    send_response(client_fd, false, validation_error.c_str());
+                    return;
+                }
+                queue_command(SelectLassoCmd{.points = std::move(points),
+                                             .camera_index = request.value("camera_index", 0),
+                                             .mode = request.value("mode", "replace")});
+                send_response(client_fd, true);
+
+            } else if (command == "select_ring") {
+                queue_command(SelectRingCmd{.x = request.value("x", 0.0f),
+                                            .y = request.value("y", 0.0f),
+                                            .camera_index = request.value("camera_index", 0),
+                                            .mode = request.value("mode", "replace")});
+                send_response(client_fd, true);
+
+            } else if (command == "select_brush") {
+                queue_command(SelectBrushCmd{.x = request.value("x", 0.0f),
+                                             .y = request.value("y", 0.0f),
+                                             .radius = request.value("radius", 20.0f),
+                                             .camera_index = request.value("camera_index", 0),
+                                             .mode = request.value("mode", "replace")});
+                send_response(client_fd, true);
+
             } else if (command == "apply_mask") {
                 std::vector<uint8_t> mask;
                 if (request.contains("mask")) {
@@ -373,6 +474,29 @@ namespace lfs::vis {
                                         .y1 = arg.y1,
                                         .camera_index = arg.camera_index,
                                         .mode = std::move(arg.mode)}
+                            .emit();
+                    } else if constexpr (std::is_same_v<T, SelectPolygonCmd>) {
+                        cmd::SelectPolygon{.points = std::move(arg.points),
+                                           .camera_index = arg.camera_index,
+                                           .mode = std::move(arg.mode)}
+                            .emit();
+                    } else if constexpr (std::is_same_v<T, SelectLassoCmd>) {
+                        cmd::SelectLasso{.points = std::move(arg.points),
+                                         .camera_index = arg.camera_index,
+                                         .mode = std::move(arg.mode)}
+                            .emit();
+                    } else if constexpr (std::is_same_v<T, SelectRingCmd>) {
+                        cmd::SelectRing{.x = arg.x,
+                                        .y = arg.y,
+                                        .camera_index = arg.camera_index,
+                                        .mode = std::move(arg.mode)}
+                            .emit();
+                    } else if constexpr (std::is_same_v<T, SelectBrushCmd>) {
+                        cmd::SelectBrush{.x = arg.x,
+                                         .y = arg.y,
+                                         .radius = arg.radius,
+                                         .camera_index = arg.camera_index,
+                                         .mode = std::move(arg.mode)}
                             .emit();
                     } else if constexpr (std::is_same_v<T, ApplyMaskCmd>) {
                         cmd::ApplySelectionMask{.mask = std::move(arg.mask)}.emit();

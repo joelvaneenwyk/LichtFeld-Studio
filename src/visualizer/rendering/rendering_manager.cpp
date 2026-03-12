@@ -39,6 +39,19 @@
 
 namespace lfs::vis {
 
+    namespace {
+
+        template<typename TRenderable>
+        [[nodiscard]] const TRenderable* findRenderableByNodeId(const std::vector<TRenderable>& renderables,
+                                                                const core::NodeId node_id) {
+            const auto it = std::ranges::find_if(renderables, [node_id](const auto& item) {
+                return item.node_id == node_id;
+            });
+            return it != renderables.end() ? &(*it) : nullptr;
+        }
+
+    } // namespace
+
     using namespace lfs::core::events;
 
     GTTextureCache::GTTextureCache() = default;
@@ -1142,27 +1155,27 @@ namespace lfs::vis {
         bool crop_inverse = false;
 
         const auto& cropboxes = sm->getScene().getVisibleCropBoxes();
-        if (!cropboxes.empty() && cropboxes[0].data) {
-            const auto& cb = cropboxes[0];
-            const glm::mat4 inv_transform = glm::inverse(cb.world_transform);
+        if (const auto* const cb = findRenderableByNodeId(cropboxes, sm->getActiveSelectionCropBoxId());
+            cb && cb->data) {
+            const glm::mat4 inv_transform = glm::inverse(cb->world_transform);
             const float* const t_ptr = glm::value_ptr(inv_transform);
             crop_t = lfs::core::Tensor::from_vector(std::vector<float>(t_ptr, t_ptr + 16), {4, 4});
-            crop_min = lfs::core::Tensor::from_vector({cb.data->min.x, cb.data->min.y, cb.data->min.z}, {3});
-            crop_max = lfs::core::Tensor::from_vector({cb.data->max.x, cb.data->max.y, cb.data->max.z}, {3});
-            crop_inverse = cb.data->inverse;
+            crop_min = lfs::core::Tensor::from_vector({cb->data->min.x, cb->data->min.y, cb->data->min.z}, {3});
+            crop_max = lfs::core::Tensor::from_vector({cb->data->max.x, cb->data->max.y, cb->data->max.z}, {3});
+            crop_inverse = cb->data->inverse;
         }
 
         lfs::core::Tensor ellip_t, ellip_radii;
         bool ellipsoid_inverse = false;
 
         const auto& ellipsoids = sm->getScene().getVisibleEllipsoids();
-        if (!ellipsoids.empty() && ellipsoids[0].data) {
-            const auto& el = ellipsoids[0];
-            const glm::mat4 inv_transform = glm::inverse(el.world_transform);
+        if (const auto* const el = findRenderableByNodeId(ellipsoids, sm->getActiveSelectionEllipsoidId());
+            el && el->data) {
+            const glm::mat4 inv_transform = glm::inverse(el->world_transform);
             const float* const t_ptr = glm::value_ptr(inv_transform);
             ellip_t = lfs::core::Tensor::from_vector(std::vector<float>(t_ptr, t_ptr + 16), {4, 4});
-            ellip_radii = lfs::core::Tensor::from_vector({el.data->radii.x, el.data->radii.y, el.data->radii.z}, {3});
-            ellipsoid_inverse = el.data->inverse;
+            ellip_radii = lfs::core::Tensor::from_vector({el->data->radii.x, el->data->radii.y, el->data->radii.z}, {3});
+            ellipsoid_inverse = el->data->inverse;
         }
 
         lfs::rendering::filter_selection_by_crop(
@@ -1174,6 +1187,51 @@ namespace lfs::vis {
             ellip_t.is_valid() ? &ellip_t : nullptr,
             ellip_radii.is_valid() ? &ellip_radii : nullptr,
             ellipsoid_inverse);
+    }
+
+    void RenderingManager::applyDepthFilter(lfs::core::Tensor& selection) {
+        if (!selection.is_valid())
+            return;
+
+        auto* const sm = services().sceneOrNull();
+        if (!sm)
+            return;
+
+        const auto* const model = sm->getModelForRendering();
+        if (!model || model->size() == 0)
+            return;
+
+        const auto settings = getSettings();
+        if (!settings.depth_filter_enabled)
+            return;
+
+        const auto& means = model->means();
+        if (!means.is_valid() || means.size(0) != selection.size(0))
+            return;
+
+        const glm::mat4 world_to_filter = settings.depth_filter_transform.inv().toMat4();
+        const float* const t_ptr = glm::value_ptr(world_to_filter);
+        const auto depth_t = lfs::core::Tensor::from_vector(std::vector<float>(t_ptr, t_ptr + 16), {4, 4});
+        const auto depth_min = lfs::core::Tensor::from_vector(
+            {settings.depth_filter_min.x, settings.depth_filter_min.y, settings.depth_filter_min.z}, {3});
+        const auto depth_max = lfs::core::Tensor::from_vector(
+            {settings.depth_filter_max.x, settings.depth_filter_max.y, settings.depth_filter_max.z}, {3});
+
+        lfs::rendering::filter_selection_by_crop(
+            selection, means,
+            &depth_t, &depth_min, &depth_max, false,
+            nullptr, nullptr, false);
+    }
+
+    void RenderingManager::applySelectionFilters(lfs::core::Tensor& selection,
+                                                 const bool use_crop_filter,
+                                                 const bool use_depth_filter) {
+        if (use_crop_filter) {
+            applyCropFilter(selection);
+        }
+        if (use_depth_filter) {
+            applyDepthFilter(selection);
+        }
     }
 
     void RenderingManager::setBrushState(const bool active, const float x, const float y, const float radius,
@@ -1216,16 +1274,16 @@ namespace lfs::vis {
         rect_preview_active_ = false;
     }
 
-    void RenderingManager::setPolygonPreview(const std::vector<glm::vec3>& world_points, bool closed, bool add_mode) {
+    void RenderingManager::setPolygonPreview(const std::vector<std::pair<float, float>>& points, bool closed, bool add_mode) {
         polygon_preview_active_ = true;
-        polygon_world_points_ = world_points;
+        polygon_points_ = points;
         polygon_closed_ = closed;
         polygon_add_mode_ = add_mode;
     }
 
     void RenderingManager::clearPolygonPreview() {
         polygon_preview_active_ = false;
-        polygon_world_points_.clear();
+        polygon_points_.clear();
         polygon_closed_ = false;
     }
 
@@ -1238,6 +1296,14 @@ namespace lfs::vis {
     void RenderingManager::clearLassoPreview() {
         lasso_preview_active_ = false;
         lasso_points_.clear();
+    }
+
+    void RenderingManager::clearSelectionPreviews() {
+        clearPreviewSelection();
+        clearBrushState();
+        clearRectPreview();
+        clearPolygonPreview();
+        clearLassoPreview();
     }
 
     void RenderingManager::adjustSaturation(const float mouse_x, const float mouse_y, const float radius,

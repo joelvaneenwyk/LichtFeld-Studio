@@ -200,6 +200,50 @@ namespace lfs::mcp {
         return parse_response(*result);
     }
 
+    std::expected<void, std::string> SelectionClient::select_polygon(const std::vector<float>& points,
+                                                                     const std::string& mode, int camera_index) {
+        const json command = {{"command", "select_polygon"}, {"points", points}, {"mode", mode}, {"camera_index", camera_index}};
+
+        const auto result = send_command(command.dump());
+        if (!result)
+            return std::unexpected(result.error());
+
+        return parse_response(*result);
+    }
+
+    std::expected<void, std::string> SelectionClient::select_lasso(const std::vector<float>& points,
+                                                                   const std::string& mode, int camera_index) {
+        const json command = {{"command", "select_lasso"}, {"points", points}, {"mode", mode}, {"camera_index", camera_index}};
+
+        const auto result = send_command(command.dump());
+        if (!result)
+            return std::unexpected(result.error());
+
+        return parse_response(*result);
+    }
+
+    std::expected<void, std::string> SelectionClient::select_ring(const float x, const float y,
+                                                                  const std::string& mode, const int camera_index) {
+        const json command = {{"command", "select_ring"}, {"x", x}, {"y", y}, {"mode", mode}, {"camera_index", camera_index}};
+
+        const auto result = send_command(command.dump());
+        if (!result)
+            return std::unexpected(result.error());
+
+        return parse_response(*result);
+    }
+
+    std::expected<void, std::string> SelectionClient::select_brush(float x, float y, float radius,
+                                                                   const std::string& mode, int camera_index) {
+        const json command = {{"command", "select_brush"}, {"x", x}, {"y", y}, {"radius", radius}, {"mode", mode}, {"camera_index", camera_index}};
+
+        const auto result = send_command(command.dump());
+        if (!result)
+            return std::unexpected(result.error());
+
+        return parse_response(*result);
+    }
+
     std::expected<void, std::string> SelectionClient::apply_mask(const std::vector<uint8_t>& mask) {
         const json command = {{"command", "apply_mask"}, {"mask", mask}};
 

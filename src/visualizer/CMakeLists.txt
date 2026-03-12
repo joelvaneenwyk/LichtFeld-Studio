@@ -78,6 +78,7 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
         gui/terminal/pty_process.cpp
         gui/terminal/terminal_widget.cpp
         gui/windows/video_extractor_dialog.cpp
+        gui/video_widget_factory.cpp
 
         # Scene management
         scene/scene_manager.cpp
@@ -177,6 +178,7 @@ target_include_directories(lfs_visualizer
 target_link_libraries(lfs_visualizer
         PRIVATE
         lfs_core
+        $<$<PLATFORM_ID:Windows>:lfs_video>
         lfs_geometry
         lfs_io
         lfs_rendering

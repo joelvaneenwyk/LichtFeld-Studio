@@ -153,6 +153,8 @@ namespace lfs::vis {
             case input::Action::SELECT_ALL:
             case input::Action::COPY_SELECTION:
             case input::Action::PASTE_SELECTION:
+            case input::Action::TOGGLE_SELECTION_DEPTH_FILTER:
+            case input::Action::TOGGLE_SELECTION_CROP_FILTER:
                 return true;
             default:
                 return false;
@@ -574,7 +576,8 @@ namespace lfs::vis {
                         props.set("mode", sub_mode);
                         props.set("op", selection_op);
                         props.set("brush_radius", selection_tool_->getBrushRadius());
-                        props.set("use_depth_filter", selection_tool_->isCropFilterEnabled());
+                        props.set("use_crop_filter", selection_tool_->isCropFilterEnabled());
+                        props.set("use_depth_filter", selection_tool_->isDepthFilterEnabled());
 
                         const auto result = op::operators().invoke(op::BuiltinOp::SelectionStroke, &props);
                         if (result.status == op::OperatorResult::RUNNING_MODAL) {
@@ -876,8 +879,24 @@ namespace lfs::vis {
             return;
         }
 
-        // Brush radius adjustment for selection/brush tools
         const int mods = getModifierKeys();
+        const input::Action scroll_action = bindings_.getActionForScroll(getCurrentToolMode(), mods);
+        if (selection_tool_ && selection_tool_->isEnabled()) {
+            if (scroll_action == input::Action::DEPTH_ADJUST_NEAR && selection_tool_->isDepthFilterEnabled()) {
+                selection_tool_->adjustDepthNear((yoff > 0) ? 1.1f : 0.9f);
+                return;
+            }
+            if (scroll_action == input::Action::DEPTH_ADJUST_FAR && selection_tool_->isDepthFilterEnabled()) {
+                selection_tool_->adjustDepthFar((yoff > 0) ? 1.1f : 0.9f);
+                return;
+            }
+            if (scroll_action == input::Action::DEPTH_ADJUST_SIDE && selection_tool_->isDepthFilterEnabled()) {
+                selection_tool_->adjustDepthWidth((yoff > 0) ? 1.1f : 0.9f);
+                return;
+            }
+        }
+
+        // Brush radius adjustment for selection/brush tools
         const bool ctrl = (mods & input::KEYMOD_CTRL) != 0;
         const bool shift = (mods & input::KEYMOD_SHIFT) != 0;
         if ((ctrl || shift) && !op::operators().hasModalOperator()) {
@@ -1054,6 +1073,18 @@ namespace lfs::vis {
             case input::Action::CYCLE_SELECTION_VIS:
                 if (gui && gui->gizmo().getCurrentToolMode() == ToolType::Selection) {
                     cmd::CycleSelectionVisualization{}.emit();
+                }
+                return;
+
+            case input::Action::TOGGLE_SELECTION_DEPTH_FILTER:
+                if (selection_tool_ && selection_tool_->isEnabled()) {
+                    selection_tool_->toggleDepthFilter();
+                }
+                return;
+
+            case input::Action::TOGGLE_SELECTION_CROP_FILTER:
+                if (selection_tool_ && selection_tool_->isEnabled()) {
+                    selection_tool_->toggleCropFilter();
                 }
                 return;
 

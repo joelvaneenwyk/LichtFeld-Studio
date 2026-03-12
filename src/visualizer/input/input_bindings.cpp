@@ -20,7 +20,7 @@ namespace lfs::vis::input {
 
     namespace {
 
-        constexpr int PROFILE_VERSION = 3; // Version 3 rebuilds legacy Default profiles to include per-mode tool shortcuts.
+        constexpr int PROFILE_VERSION = 4; // Version 4 adds selection depth near-plane control to the default profile.
 
         bool isDefaultProfile(const std::filesystem::path& path, const std::string& profile_name) {
             return profile_name == "Default" || lfs::core::path_to_utf8(path.stem()) == "Default";
@@ -413,6 +413,7 @@ namespace lfs::vis::input {
             {KeyTrigger{KEY_T, MODIFIER_NONE}, Action::CYCLE_PLY, "Cycle PLY"},
             // Depth
             {KeyTrigger{KEY_F, MODIFIER_CTRL}, Action::TOGGLE_DEPTH_MODE, "Depth filter"},
+            {MouseScrollTrigger{MODIFIER_ALT | MODIFIER_SHIFT}, Action::DEPTH_ADJUST_NEAR, "Depth near"},
             {MouseScrollTrigger{MODIFIER_ALT}, Action::DEPTH_ADJUST_FAR, "Depth far"},
             {MouseScrollTrigger{MODIFIER_ALT | MODIFIER_CTRL}, Action::DEPTH_ADJUST_SIDE, "Depth side"},
             // Editing (Delete is mode-specific, added below)
@@ -424,6 +425,8 @@ namespace lfs::vis::input {
             {KeyTrigger{KEY_C, MODIFIER_CTRL}, Action::COPY_SELECTION, "Copy"},
             {KeyTrigger{KEY_V, MODIFIER_CTRL}, Action::PASTE_SELECTION, "Paste"},
             // Tools
+            {KeyTrigger{KEY_D, MODIFIER_CTRL | MODIFIER_ALT}, Action::TOGGLE_SELECTION_DEPTH_FILTER, "Depth filter"},
+            {KeyTrigger{KEY_C, MODIFIER_CTRL | MODIFIER_ALT}, Action::TOGGLE_SELECTION_CROP_FILTER, "Crop filter"},
             {KeyTrigger{KEY_B, MODIFIER_NONE}, Action::CYCLE_BRUSH_MODE, "Brush mode"},
             {KeyTrigger{KEY_T, MODIFIER_CTRL}, Action::CYCLE_SELECTION_VIS, "Sel vis"},
             {KeyTrigger{KEY_ENTER, MODIFIER_NONE}, Action::APPLY_CROP_BOX, "Apply/confirm"},
@@ -550,8 +553,11 @@ namespace lfs::vis::input {
         case Action::DESELECT_ALL: return "Deselect All";
         case Action::COPY_SELECTION: return "Copy Selection";
         case Action::PASTE_SELECTION: return "Paste Selection";
+        case Action::DEPTH_ADJUST_NEAR: return "Adjust Depth Near";
         case Action::DEPTH_ADJUST_FAR: return "Adjust Depth Far";
         case Action::DEPTH_ADJUST_SIDE: return "Adjust Depth Side";
+        case Action::TOGGLE_SELECTION_DEPTH_FILTER: return "Toggle Selection Depth Filter";
+        case Action::TOGGLE_SELECTION_CROP_FILTER: return "Toggle Selection Crop Filter";
         case Action::BRUSH_RESIZE: return "Resize Brush";
         case Action::CYCLE_BRUSH_MODE: return "Cycle Brush Mode";
         case Action::CONFIRM_POLYGON: return "Confirm Polygon";

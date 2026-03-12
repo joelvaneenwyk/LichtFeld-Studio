@@ -91,6 +91,7 @@ set(BENCHMARK_FILES
     benchmark_scheduler.cpp
     benchmark_losses.cpp
     benchmark_ppisp_controller.cpp
+    benchmark_selection_modes.cpp
     # profile_adam_optimizer.cpp  # Disabled - missing header
     test_tensor_benchmark.cpp
     test_memory_pool_benchmark.cpp
@@ -234,6 +235,11 @@ set(TEST_FILES
     test_extended_unary_ops_vs_torch.cpp
     # test_property_system.cpp  # Disabled: needs API update after merge
     test_scene_validity.cpp
+    test_selection_rasterization_ops.cpp
+    test_selection_service_interactions.cpp
+    test_selection_command_dispatch.cpp
+    test_selection_operator_modal.cpp
+    test_selection_ipc_roundtrip.cpp
     test_fastgs_analytical_gradients.cpp
     test_background_image.cpp
     test_operator_return_value.cpp
@@ -313,6 +319,7 @@ target_compile_definitions(lichtfeld_tests PRIVATE
 # Link libraries
 target_link_libraries(lichtfeld_tests PRIVATE
     # LFS modules
+    lfs_mcp
     lfs_visualizer
     lfs_rendering
     lfs_training
