@@ -1181,10 +1181,11 @@ namespace lfs::vis {
         return {};
     }
 
-    std::expected<void, std::string> VisualizerImpl::saveCheckpoint(
-        const std::filesystem::path& /*path*/) {
+    std::expected<void, std::string> VisualizerImpl::saveCheckpoint() {
         if (!trainer_manager_ || !trainer_manager_->getTrainer())
             return std::unexpected("No active training session");
+        if (!trainer_manager_->isTrainingActive())
+            return std::unexpected("Training is not active");
         trainer_manager_->requestSaveCheckpoint();
         return {};
     }

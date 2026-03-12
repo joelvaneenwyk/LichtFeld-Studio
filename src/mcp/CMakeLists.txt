@@ -32,6 +32,7 @@ target_link_libraries(lfs_mcp
     PRIVATE
     lfs_core
     lfs_event_bridge
+    lfs_io
     lfs_training
     lfs_rendering
     lfs_python_utils

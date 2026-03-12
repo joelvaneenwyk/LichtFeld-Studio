@@ -51,7 +51,7 @@ namespace lfs::vis {
 
         virtual void postWork(std::function<void()> fn) = 0;
         virtual std::expected<void, std::string> startTraining() = 0;
-        virtual std::expected<void, std::string> saveCheckpoint(const std::filesystem::path& path) = 0;
+        virtual std::expected<void, std::string> saveCheckpoint() = 0;
 
         virtual ~Visualizer() = default;
     };

@@ -4,7 +4,9 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <future>
 #include <functional>
 #include <mutex>
 #include <queue>
@@ -32,6 +34,11 @@ namespace lfs::vis {
     struct DeselectAllCmd {};
 
     using SelectionCommand = std::variant<SelectRectCmd, ApplyMaskCmd, DeselectAllCmd>;
+
+    struct SelectionCommandCompletion {
+        bool success = false;
+        std::string error;
+    };
 
     struct CapabilityInvokeResult {
         bool success = false;
@@ -63,9 +70,15 @@ namespace lfs::vis {
         static constexpr size_t RECV_BUFFER_SIZE = 65536;
         static constexpr int LISTEN_BACKLOG = 5;
         static constexpr int SELECT_TIMEOUT_US = 100000;
+        static constexpr int COMMAND_TIMEOUT_SEC = 5;
+
+        struct QueuedSelectionCommand {
+            SelectionCommand command;
+            std::promise<SelectionCommandCompletion> completion;
+        };
 
         void server_loop();
-        void queue_command(SelectionCommand cmd);
+        [[nodiscard]] std::future<SelectionCommandCompletion> queue_command(SelectionCommand cmd);
 
 #ifdef _WIN32
         void handle_client(HANDLE client_pipe);
@@ -85,7 +98,7 @@ namespace lfs::vis {
         std::thread server_thread_;
 
         std::mutex command_queue_mutex_;
-        std::queue<SelectionCommand> command_queue_;
+        std::queue<QueuedSelectionCommand> command_queue_;
 
         InvokeCapabilityCallback invoke_capability_callback_;
     };

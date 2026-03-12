@@ -195,8 +195,8 @@ namespace lfs::vis {
         cmd::SelectAll::when([this](const auto&) { selectAllGaussians(); });
         cmd::CopySelection::when([this](const auto&) { copySelectionToClipboard(); });
         cmd::PasteSelection::when([this](const auto&) { pasteSelectionFromClipboard(); });
-        cmd::SelectRect::when([this](const auto& e) { selectRect(e.x0, e.y0, e.x1, e.y1, e.mode); });
-        cmd::ApplySelectionMask::when([this](const auto& e) { applySelectionMask(e.mask); });
+        cmd::SelectRect::when([this](const auto& e) { (void)selectRect(e.x0, e.y0, e.x1, e.y1, e.mode); });
+        cmd::ApplySelectionMask::when([this](const auto& e) { (void)applySelectionMask(e.mask); });
 
         state::SelectionChanged::when([](const auto& event) {
             python::update_selection(event.has_selection, event.count);
@@ -1469,8 +1469,8 @@ namespace lfs::vis {
         }
     }
 
-    void SceneManager::loadDataset(const std::filesystem::path& path,
-                                   const lfs::core::param::TrainingParameters& params) {
+    std::expected<void, std::string> SceneManager::loadDataset(const std::filesystem::path& path,
+                                                               const lfs::core::param::TrainingParameters& params) {
         LOG_TIMER("SceneManager::loadDataset");
 
         // Emit start event for progress tracking
@@ -1494,7 +1494,7 @@ namespace lfs::vis {
                     .num_images = 0,
                     .num_points = 0}
                     .emit();
-                return;
+                return std::unexpected(validation_result.error());
             }
 
             // Validation passed - now clear and load
@@ -1517,7 +1517,7 @@ namespace lfs::vis {
                     .num_images = 0,
                     .num_points = 0}
                     .emit();
-                return;
+                return std::unexpected(load_result.error());
             }
 
             // Create Trainer from Scene
@@ -1574,6 +1574,8 @@ namespace lfs::vis {
                 LOG_INFO("Switched to point cloud mode ({} points)", num_gaussians > 0 ? num_gaussians : num_points);
             }
 
+            return {};
+
         } catch (const std::exception& e) {
             LOG_ERROR("Failed to load dataset: {} (path: {})", e.what(), lfs::core::path_to_utf8(path));
 
@@ -1585,6 +1587,7 @@ namespace lfs::vis {
                 .num_images = 0,
                 .num_points = 0}
                 .emit();
+            return std::unexpected(e.what());
         }
     }
 
@@ -3423,9 +3426,9 @@ namespace lfs::vis {
             rm->markDirty(DirtyFlag::SPLATS | DirtyFlag::SELECTION);
     }
 
-    void SceneManager::selectRect(float x0, float y0, float x1, float y1, const std::string& mode) {
+    SelectionResult SceneManager::selectRect(float x0, float y0, float x1, float y1, const std::string& mode) {
         if (!selection_service_)
-            return;
+            return {false, 0, "Selection service not initialized"};
 
         SelectionMode sel_mode = SelectionMode::Replace;
         if (mode == "add")
@@ -3433,14 +3436,14 @@ namespace lfs::vis {
         else if (mode == "remove")
             sel_mode = SelectionMode::Remove;
 
-        (void)selection_service_->selectRect(x0, y0, x1, y1, sel_mode);
+        return selection_service_->selectRect(x0, y0, x1, y1, sel_mode);
     }
 
-    void SceneManager::applySelectionMask(const std::vector<uint8_t>& mask) {
+    SelectionResult SceneManager::applySelectionMask(const std::vector<uint8_t>& mask) {
         if (!selection_service_)
-            return;
+            return {false, 0, "Selection service not initialized"};
 
-        (void)selection_service_->applyMask(mask, SelectionMode::Replace);
+        return selection_service_->applyMask(mask, SelectionMode::Replace);
     }
 
 } // namespace lfs::vis

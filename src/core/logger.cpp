@@ -99,7 +99,12 @@ namespace lfs::core {
                 }
 
                 const auto time_t_val = std::chrono::system_clock::to_time_t(msg.time);
-                const auto tm = *std::localtime(&time_t_val);
+                std::tm tm{};
+#ifdef WIN32
+                localtime_s(&tm, &time_t_val);
+#else
+                localtime_r(&time_t_val, &tm);
+#endif
                 const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(
                                         msg.time.time_since_epoch())
                                         .count() %

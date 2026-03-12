@@ -5,6 +5,7 @@
 #include "core/events.hpp"
 #include "core/logger.hpp"
 
+#include <chrono>
 #include <cstring>
 #include <nlohmann/json.hpp>
 
@@ -130,25 +131,40 @@ namespace lfs::vis {
             const auto command = request.value("command", "");
 
             if (command == "select_rect") {
-                queue_command(SelectRectCmd{.x0 = request.value("x0", 0.0f),
-                                            .y0 = request.value("y0", 0.0f),
-                                            .x1 = request.value("x1", 0.0f),
-                                            .y1 = request.value("y1", 0.0f),
-                                            .camera_index = request.value("camera_index", 0),
-                                            .mode = request.value("mode", "replace")});
-                send_response(client_pipe, true);
+                auto completion = queue_command(SelectRectCmd{.x0 = request.value("x0", 0.0f),
+                                                               .y0 = request.value("y0", 0.0f),
+                                                               .x1 = request.value("x1", 0.0f),
+                                                               .y1 = request.value("y1", 0.0f),
+                                                               .camera_index = request.value("camera_index", 0),
+                                                               .mode = request.value("mode", "replace")});
+                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
+                    send_response(client_pipe, false, "Selection update timed out");
+                } else {
+                    const auto result = completion.get();
+                    send_response(client_pipe, result.success, result.error.empty() ? nullptr : result.error.c_str());
+                }
 
             } else if (command == "apply_mask") {
                 std::vector<uint8_t> mask;
                 if (request.contains("mask")) {
                     mask = request["mask"].get<std::vector<uint8_t>>();
                 }
-                queue_command(ApplyMaskCmd{.mask = std::move(mask)});
-                send_response(client_pipe, true);
+                auto completion = queue_command(ApplyMaskCmd{.mask = std::move(mask)});
+                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
+                    send_response(client_pipe, false, "Selection update timed out");
+                } else {
+                    const auto result = completion.get();
+                    send_response(client_pipe, result.success, result.error.empty() ? nullptr : result.error.c_str());
+                }
 
             } else if (command == "deselect_all") {
-                queue_command(DeselectAllCmd{});
-                send_response(client_pipe, true);
+                auto completion = queue_command(DeselectAllCmd{});
+                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
+                    send_response(client_pipe, false, "Selection update timed out");
+                } else {
+                    const auto result = completion.get();
+                    send_response(client_pipe, result.success, result.error.empty() ? nullptr : result.error.c_str());
+                }
 
             } else if (command == "invoke_capability") {
                 const auto capability = request.value("capability", "");
@@ -289,25 +305,40 @@ namespace lfs::vis {
             const auto command = request.value("command", "");
 
             if (command == "select_rect") {
-                queue_command(SelectRectCmd{.x0 = request.value("x0", 0.0f),
-                                            .y0 = request.value("y0", 0.0f),
-                                            .x1 = request.value("x1", 0.0f),
-                                            .y1 = request.value("y1", 0.0f),
-                                            .camera_index = request.value("camera_index", 0),
-                                            .mode = request.value("mode", "replace")});
-                send_response(client_fd, true);
+                auto completion = queue_command(SelectRectCmd{.x0 = request.value("x0", 0.0f),
+                                                               .y0 = request.value("y0", 0.0f),
+                                                               .x1 = request.value("x1", 0.0f),
+                                                               .y1 = request.value("y1", 0.0f),
+                                                               .camera_index = request.value("camera_index", 0),
+                                                               .mode = request.value("mode", "replace")});
+                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
+                    send_response(client_fd, false, "Selection update timed out");
+                } else {
+                    const auto result = completion.get();
+                    send_response(client_fd, result.success, result.error.empty() ? nullptr : result.error.c_str());
+                }
 
             } else if (command == "apply_mask") {
                 std::vector<uint8_t> mask;
                 if (request.contains("mask")) {
                     mask = request["mask"].get<std::vector<uint8_t>>();
                 }
-                queue_command(ApplyMaskCmd{.mask = std::move(mask)});
-                send_response(client_fd, true);
+                auto completion = queue_command(ApplyMaskCmd{.mask = std::move(mask)});
+                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
+                    send_response(client_fd, false, "Selection update timed out");
+                } else {
+                    const auto result = completion.get();
+                    send_response(client_fd, result.success, result.error.empty() ? nullptr : result.error.c_str());
+                }
 
             } else if (command == "deselect_all") {
-                queue_command(DeselectAllCmd{});
-                send_response(client_fd, true);
+                auto completion = queue_command(DeselectAllCmd{});
+                if (completion.wait_for(std::chrono::seconds(COMMAND_TIMEOUT_SEC)) != std::future_status::ready) {
+                    send_response(client_fd, false, "Selection update timed out");
+                } else {
+                    const auto result = completion.get();
+                    send_response(client_fd, result.success, result.error.empty() ? nullptr : result.error.c_str());
+                }
 
             } else if (command == "invoke_capability") {
                 const auto capability = request.value("capability", "");
@@ -348,41 +379,58 @@ namespace lfs::vis {
 
     // Shared implementations (platform-independent)
 
-    void SelectionServer::queue_command(SelectionCommand cmd) {
+    std::future<SelectionCommandCompletion> SelectionServer::queue_command(SelectionCommand cmd) {
+        QueuedSelectionCommand queued{
+            .command = std::move(cmd),
+            .completion = std::promise<SelectionCommandCompletion>()};
+        auto future = queued.completion.get_future();
         std::lock_guard lock(command_queue_mutex_);
-        command_queue_.push(std::move(cmd));
+        command_queue_.push(std::move(queued));
+        return future;
     }
 
     void SelectionServer::process_pending_commands() {
-        std::queue<SelectionCommand> commands;
+        std::queue<QueuedSelectionCommand> commands;
         {
             std::lock_guard lock(command_queue_mutex_);
             std::swap(commands, command_queue_);
         }
 
         while (!commands.empty()) {
-            auto& cmd = commands.front();
-
-            std::visit(
-                [](auto&& arg) {
-                    using T = std::decay_t<decltype(arg)>;
-                    if constexpr (std::is_same_v<T, SelectRectCmd>) {
-                        cmd::SelectRect{.x0 = arg.x0,
-                                        .y0 = arg.y0,
-                                        .x1 = arg.x1,
-                                        .y1 = arg.y1,
-                                        .camera_index = arg.camera_index,
-                                        .mode = std::move(arg.mode)}
-                            .emit();
-                    } else if constexpr (std::is_same_v<T, ApplyMaskCmd>) {
-                        cmd::ApplySelectionMask{.mask = std::move(arg.mask)}.emit();
-                    } else if constexpr (std::is_same_v<T, DeselectAllCmd>) {
-                        cmd::DeselectAll{}.emit();
-                    }
-                },
-                cmd);
-
+            auto queued = std::move(commands.front());
             commands.pop();
+
+            SelectionCommandCompletion result{.success = true, .error = ""};
+            try {
+                std::visit(
+                    [](auto&& arg) {
+                        using T = std::decay_t<decltype(arg)>;
+                        if constexpr (std::is_same_v<T, SelectRectCmd>) {
+                            cmd::SelectRect{.x0 = arg.x0,
+                                            .y0 = arg.y0,
+                                            .x1 = arg.x1,
+                                            .y1 = arg.y1,
+                                            .camera_index = arg.camera_index,
+                                            .mode = std::move(arg.mode)}
+                                .emit();
+                        } else if constexpr (std::is_same_v<T, ApplyMaskCmd>) {
+                            cmd::ApplySelectionMask{.mask = std::move(arg.mask)}.emit();
+                        } else if constexpr (std::is_same_v<T, DeselectAllCmd>) {
+                            cmd::DeselectAll{}.emit();
+                        }
+                    },
+                    queued.command);
+            } catch (const std::exception& e) {
+                LOG_ERROR("SelectionServer: failed to process queued selection command: {}", e.what());
+                result.success = false;
+                result.error = e.what();
+            } catch (...) {
+                LOG_ERROR("SelectionServer: failed to process queued selection command: unknown error");
+                result.success = false;
+                result.error = "Unknown selection processing error";
+            }
+
+            queued.completion.set_value(std::move(result));
         }
     }
 

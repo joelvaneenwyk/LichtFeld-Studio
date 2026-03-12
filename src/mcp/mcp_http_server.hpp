@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/export.hpp"
+#include "mcp_server.hpp"
 
 #include <memory>
 #include <thread>
@@ -14,11 +15,9 @@ namespace httplib {
 
 namespace lfs::mcp {
 
-    class McpServer;
-
     class LFS_MCP_API McpHttpServer {
     public:
-        McpHttpServer();
+        explicit McpHttpServer(const McpServerOptions& server_options = {});
         ~McpHttpServer();
 
         McpHttpServer(const McpHttpServer&) = delete;

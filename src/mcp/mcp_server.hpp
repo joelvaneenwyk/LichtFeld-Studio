@@ -16,9 +16,15 @@
 
 namespace lfs::mcp {
 
+    struct McpServerOptions {
+        bool enable_tools = true;
+        bool enable_resources = true;
+        bool enable_logging = true;
+    };
+
     class LFS_MCP_API McpServer {
     public:
-        McpServer();
+        explicit McpServer(const McpServerOptions& options = {});
         ~McpServer();
 
         McpServer(const McpServer&) = delete;

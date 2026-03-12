@@ -64,14 +64,23 @@ namespace lfs::mcp {
     }
 
     json ToolRegistry::call_tool(const std::string& name, const json& arguments) {
-        std::lock_guard lock(mutex_);
-
-        auto it = tools_.find(name);
-        if (it == tools_.end()) {
-            return json{{"error", "Tool not found: " + name}};
+        ToolHandler handler;
+        std::vector<std::string> required;
+        {
+            std::lock_guard lock(mutex_);
+            auto it = tools_.find(name);
+            if (it == tools_.end())
+                return json{{"error", "Tool not found: " + name}};
+            handler = it->second.handler;
+            required = it->second.tool.input_schema.required;
         }
 
-        return it->second.handler(arguments);
+        for (const auto& field : required) {
+            if (!arguments.contains(field))
+                return json{{"error", "Missing required parameter: " + field}};
+        }
+
+        return handler(arguments);
     }
 
     json ToolRegistry::arg_type_to_json_schema(training::ArgType type) const {

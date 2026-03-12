@@ -273,8 +273,9 @@ namespace lfs::app {
             mcp::register_core_tools();
             register_gui_scene_tools(viewer.get());
 
-            mcp::McpHttpServer mcp_http;
-            mcp_http.start();
+            mcp::McpHttpServer mcp_http({.enable_resources = false});
+            if (!mcp_http.start())
+                LOG_ERROR("Failed to start MCP HTTP server");
 
             viewer->run();
 

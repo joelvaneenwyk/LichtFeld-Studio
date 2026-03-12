@@ -10,8 +10,8 @@
 
 namespace lfs::mcp {
 
-    McpHttpServer::McpHttpServer()
-        : mcp_server_(std::make_unique<McpServer>()),
+    McpHttpServer::McpHttpServer(const McpServerOptions& server_options)
+        : mcp_server_(std::make_unique<McpServer>(server_options)),
           http_server_(std::make_unique<httplib::Server>()) {}
 
     McpHttpServer::~McpHttpServer() {
@@ -44,7 +44,7 @@ namespace lfs::mcp {
             return false;
         }
 
-        listener_thread_ = std::jthread([this, port](std::stop_token) {
+        listener_thread_ = std::jthread([this, port](std::stop_token /*st*/) {
             LOG_INFO("MCP HTTP server listening on http://127.0.0.1:{}/mcp", port);
             http_server_->listen_after_bind();
         });

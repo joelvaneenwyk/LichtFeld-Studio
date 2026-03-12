@@ -12,11 +12,11 @@
 
 namespace lfs::mcp {
 
-    McpServer::McpServer() {
-        capabilities_.tools = true;
-        capabilities_.resources = true;
+    McpServer::McpServer(const McpServerOptions& options) {
+        capabilities_.tools = options.enable_tools;
+        capabilities_.resources = options.enable_resources;
         capabilities_.prompts = false;
-        capabilities_.logging = true;
+        capabilities_.logging = options.enable_logging;
     }
 
     McpServer::~McpServer() {
@@ -94,16 +94,16 @@ namespace lfs::mcp {
                 "Server not initialized. Call 'initialize' first.");
         }
 
-        if (req.method == "tools/list") {
+        if (capabilities_.tools && req.method == "tools/list") {
             return handle_tools_list(req);
         }
-        if (req.method == "tools/call") {
+        if (capabilities_.tools && req.method == "tools/call") {
             return handle_tools_call(req);
         }
-        if (req.method == "resources/list") {
+        if (capabilities_.resources && req.method == "resources/list") {
             return handle_resources_list(req);
         }
-        if (req.method == "resources/read") {
+        if (capabilities_.resources && req.method == "resources/read") {
             return handle_resources_read(req);
         }
 

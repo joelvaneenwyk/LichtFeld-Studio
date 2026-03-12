@@ -64,7 +64,7 @@ namespace lfs::vis {
         core::Scene& getScene() override { return scene_manager_->getScene(); }
         void postWork(std::function<void()> fn) override;
         std::expected<void, std::string> startTraining() override;
-        std::expected<void, std::string> saveCheckpoint(const std::filesystem::path& path) override;
+        std::expected<void, std::string> saveCheckpoint() override;
 
         // Getters for GUI (delegating to state manager)
         lfs::training::Trainer* getTrainer() const { return trainer_manager_->getTrainer(); }

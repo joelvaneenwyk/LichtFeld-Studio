@@ -6,9 +6,9 @@
 #include "mcp_tools.hpp"
 #include "selection_client.hpp"
 
+#include "core/base64.hpp"
 #include "core/checkpoint_format.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
-#include "core/image_io.hpp"
 #include "core/logger.hpp"
 #include "io/exporter.hpp"
 #include "python/runner.hpp"
@@ -18,40 +18,18 @@
 #include "training/dataset.hpp"
 #include "training/training_setup.hpp"
 
-#include <fstream>
+#include <stb_image_write.h>
+
+#include <cassert>
 #include <sstream>
 
 namespace lfs::mcp {
 
     namespace {
-        constexpr char BASE64_CHARS[] =
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-        std::string base64_encode(const std::vector<uint8_t>& data) {
-            std::string result;
-            result.reserve(((data.size() + 2) / 3) * 4);
-
-            for (size_t i = 0; i < data.size(); i += 3) {
-                const uint32_t b0 = data[i];
-                const uint32_t b1 = (i + 1 < data.size()) ? data[i + 1] : 0;
-                const uint32_t b2 = (i + 2 < data.size()) ? data[i + 2] : 0;
-
-                result += BASE64_CHARS[(b0 >> 2) & 0x3F];
-                result += BASE64_CHARS[((b0 << 4) | (b1 >> 4)) & 0x3F];
-
-                if (i + 1 < data.size()) {
-                    result += BASE64_CHARS[((b1 << 2) | (b2 >> 6)) & 0x3F];
-                } else {
-                    result += '=';
-                }
-
-                if (i + 2 < data.size()) {
-                    result += BASE64_CHARS[b2 & 0x3F];
-                } else {
-                    result += '=';
-                }
-            }
-            return result;
+        void stbi_write_callback(void* context, void* data, int size) {
+            auto* buf = static_cast<std::vector<uint8_t>*>(context);
+            auto* bytes = static_cast<const uint8_t*>(data);
+            buf->insert(buf->end(), bytes, bytes + size);
         }
     } // namespace
 
@@ -222,27 +200,27 @@ namespace lfs::mcp {
         try {
             auto [image, alpha] = rendering::rasterize_tensor(*camera, *model, bg);
 
-            std::ostringstream oss;
-            oss << "mcp_render_" << std::this_thread::get_id() << ".png";
-            auto temp_path = std::filesystem::temp_directory_path() / oss.str();
-            core::save_image(temp_path, image);
+            image = image.clone().to(core::Device::CPU).to(core::DataType::Float32);
+            if (image.ndim() == 4)
+                image = image.squeeze(0);
+            if (image.ndim() == 3 && image.shape()[0] <= 4)
+                image = image.permute({1, 2, 0});
+            image = (image.clamp(0, 1) * 255.0f).to(core::DataType::UInt8).contiguous();
 
-            std::ifstream file(temp_path, std::ios::binary | std::ios::ate);
-            if (!file) {
-                return std::unexpected("Failed to read rendered image");
-            }
+            const int h = static_cast<int>(image.shape()[0]);
+            const int w = static_cast<int>(image.shape()[1]);
+            const int c = static_cast<int>(image.shape()[2]);
+            assert(c >= 1 && c <= 4);
 
-            const auto size = file.tellg();
-            file.seekg(0, std::ios::beg);
+            std::vector<uint8_t> png_buf;
+            png_buf.reserve(static_cast<size_t>(w) * h * c);
+            int ok = stbi_write_png_to_func(
+                stbi_write_callback, &png_buf, w, h, c,
+                image.ptr<uint8_t>(), w * c);
+            if (!ok)
+                return std::unexpected("PNG encoding failed");
 
-            std::vector<uint8_t> buffer(size);
-            if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
-                return std::unexpected("Failed to read image data");
-            }
-
-            std::filesystem::remove(temp_path);
-
-            return base64_encode(buffer);
+            return core::base64_encode(png_buf);
         } catch (const std::exception& e) {
             return std::unexpected(std::string("Render failed: ") + e.what());
         }
