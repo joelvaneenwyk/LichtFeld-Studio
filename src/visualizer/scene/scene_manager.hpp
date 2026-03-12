@@ -148,12 +148,14 @@ namespace lfs::vis {
         core::NodeId getSelectedNodeCropBoxId() const;
         core::CropBoxData* getSelectedNodeCropBox();
         const core::CropBoxData* getSelectedNodeCropBox() const;
+        core::NodeId getActiveSelectionCropBoxId() const;
         void syncCropBoxToRenderSettings();
 
         // Ellipsoid operations for selected node
         core::NodeId getSelectedNodeEllipsoidId() const;
         core::EllipsoidData* getSelectedNodeEllipsoid();
         const core::EllipsoidData* getSelectedNodeEllipsoid() const;
+        core::NodeId getActiveSelectionEllipsoidId() const;
         void syncEllipsoidToRenderSettings();
 
         std::expected<void, std::string> loadDataset(const std::filesystem::path& path,
@@ -220,7 +222,15 @@ namespace lfs::vis {
         void selectAllGaussians();
         void copySelectionToClipboard();
         void pasteSelectionFromClipboard();
-        [[nodiscard]] SelectionResult selectRect(float x0, float y0, float x1, float y1, const std::string& mode);
+        [[nodiscard]] SelectionResult selectBrush(float x, float y, float radius, const std::string& mode,
+                                                  int camera_index = 0);
+        [[nodiscard]] SelectionResult selectRect(float x0, float y0, float x1, float y1, const std::string& mode,
+                                                 int camera_index = 0);
+        [[nodiscard]] SelectionResult selectPolygon(const std::vector<float>& points, const std::string& mode,
+                                                    int camera_index = 0);
+        [[nodiscard]] SelectionResult selectLasso(const std::vector<float>& points, const std::string& mode,
+                                                  int camera_index = 0);
+        [[nodiscard]] SelectionResult selectRing(float x, float y, const std::string& mode, int camera_index = 0);
         [[nodiscard]] SelectionResult applySelectionMask(const std::vector<uint8_t>& mask);
 
         void initSelectionService();

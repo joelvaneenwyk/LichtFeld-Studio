@@ -28,7 +28,6 @@
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/file_association.hpp"
 #include "gui/utils/windows_utils.hpp"
-#include "io/video_frame_extractor.hpp"
 #include <implot.h>
 
 #include "gui/gui_focus_state.hpp"
@@ -143,47 +142,7 @@ namespace lfs::vis::gui {
         rml_modal_overlay_ = std::make_unique<RmlModalOverlay>(&rmlui_manager_);
         global_context_menu_ = std::make_unique<GlobalContextMenu>(&rmlui_manager_);
         lfs::python::set_global_context_menu(global_context_menu_.get());
-        video_extractor_dialog_ = std::make_unique<lfs::gui::VideoExtractorDialog>();
-
-        // Wire up video extractor dialog callback
-        video_extractor_dialog_->setOnStartExtraction([this](const lfs::gui::VideoExtractionParams& params) {
-            if (video_extraction_thread_ && video_extraction_thread_->joinable())
-                video_extraction_thread_->join();
-
-            auto* dialog = video_extractor_dialog_.get();
-            video_extraction_thread_.emplace([params, dialog]() {
-                lfs::io::VideoFrameExtractor extractor;
-
-                lfs::io::VideoFrameExtractor::Params extract_params;
-                extract_params.video_path = params.video_path;
-                extract_params.output_dir = params.output_dir;
-                extract_params.mode = params.mode;
-                extract_params.fps = params.fps;
-                extract_params.frame_interval = params.frame_interval;
-                extract_params.format = params.format;
-                extract_params.jpg_quality = params.jpg_quality;
-                extract_params.start_time = params.start_time;
-                extract_params.end_time = params.end_time;
-                extract_params.resolution_mode = params.resolution_mode;
-                extract_params.scale = params.scale;
-                extract_params.custom_width = params.custom_width;
-                extract_params.custom_height = params.custom_height;
-                extract_params.filename_pattern = params.filename_pattern;
-
-                extract_params.progress_callback = [dialog](int current, int total) {
-                    dialog->updateProgress(current, total);
-                };
-
-                std::string error;
-                if (!extractor.extract(extract_params, error)) {
-                    LOG_ERROR("Video frame extraction failed: {}", error);
-                    dialog->setExtractionError(error);
-                } else {
-                    LOG_INFO("Video frame extraction completed successfully");
-                    dialog->setExtractionComplete();
-                }
-            });
-        });
+        video_widget_ = lfs::gui::createVideoWidget();
 
         // Initialize window states
         window_states_["scene_panel"] = true;
@@ -753,9 +712,8 @@ namespace lfs::vis::gui {
     void GuiManager::shutdown() {
         panel_layout_.saveState();
 
-        if (video_extraction_thread_ && video_extraction_thread_->joinable())
-            video_extraction_thread_->join();
-        video_extraction_thread_.reset();
+        if (video_widget_)
+            video_widget_->shutdown();
 
         async_tasks_.shutdown();
 
@@ -818,7 +776,7 @@ namespace lfs::vis::gui {
 
         // Floating panels (self-managed windows)
         reg_panel("native.video_extractor", "Video Extractor",
-                  make_panel(VideoExtractorPanel(video_extractor_dialog_.get())),
+                  make_panel(VideoExtractorPanel(video_widget_.get())),
                   PanelSpace::Floating, 11,
                   static_cast<uint32_t>(PanelOption::SELF_MANAGED),
                   750.0f);
@@ -1350,16 +1308,11 @@ namespace lfs::vis::gui {
 
             if (rm && rm->isPolygonPreviewActive()) {
                 const auto& t = theme();
-                const auto& world_points = rm->getPolygonWorldPoints();
+                const auto& points = rm->getPolygonPoints();
                 const bool closed = rm->isPolygonClosed();
                 const bool add_mode = rm->isPolygonAddMode();
 
-                if (!world_points.empty()) {
-                    const auto& viewport = ctx.viewer->getViewport();
-                    const glm::mat4 view = viewport.getViewMatrix();
-                    const glm::mat4 proj = viewport.getProjectionMatrix(rm->getFocalLengthMm());
-                    const glm::mat4 vp_mat = proj * view;
-
+                if (!points.empty()) {
                     const ImU32 line_color = add_mode
                                                  ? toU32WithAlpha(t.palette.success, 0.8f)
                                                  : toU32WithAlpha(t.palette.error, 0.8f);
@@ -1374,21 +1327,12 @@ namespace lfs::vis::gui {
                                                           : toU32WithAlpha(t.palette.error, 0.5f);
 
                     std::vector<ImVec2> screen_points;
-                    screen_points.reserve(world_points.size());
-                    bool all_visible = true;
-                    for (const auto& wp : world_points) {
-                        const glm::vec4 clip = vp_mat * glm::vec4(wp, 1.0f);
-                        if (clip.w <= 0.0f) {
-                            all_visible = false;
-                            break;
-                        }
-                        const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                    screen_points.reserve(points.size());
+                    const float render_scale = rm->getSettings().render_scale;
+                    for (const auto& [px, py] : points) {
                         screen_points.emplace_back(
-                            viewport_layout_.pos.x + (ndc.x * 0.5f + 0.5f) * viewport_layout_.size.x,
-                            viewport_layout_.pos.y + (1.0f - (ndc.y * 0.5f + 0.5f)) * viewport_layout_.size.y);
-                    }
-                    if (!all_visible) {
-                        screen_points.clear();
+                            viewport_layout_.pos.x + px / render_scale,
+                            viewport_layout_.pos.y + py / render_scale);
                     }
 
                     const ImVec2 clip_min(viewport_layout_.pos.x, viewport_layout_.pos.y);
@@ -1840,7 +1784,7 @@ namespace lfs::vis::gui {
     bool GuiManager::needsAnimationFrame() const {
         if (startup_overlay_.needsAnimationFrame())
             return true;
-        if (video_extractor_dialog_ && video_extractor_dialog_->isVideoPlaying())
+        if (video_widget_ && video_widget_->isVideoPlaying())
             return true;
         if (ui_layout_settle_frames_ > 0)
             return true;

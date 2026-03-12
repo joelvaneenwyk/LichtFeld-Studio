@@ -13,14 +13,18 @@
 #include "io/exporter.hpp"
 #include "python/runner.hpp"
 #include "rendering/gs_rasterizer_tensor.hpp"
+#include "rendering/rasterizer/rasterization/include/forward.h"
 #include "rendering/rasterizer/rasterization/include/rasterization_api_tensor.h"
 #include "training/checkpoint.hpp"
 #include "training/dataset.hpp"
 #include "training/training_setup.hpp"
+#include "visualizer/selection/selection_group_mask.hpp"
 
 #include <stb_image_write.h>
 
 #include <cassert>
+#include <cuda_runtime.h>
+#include <limits>
 #include <sstream>
 
 namespace lfs::mcp {
@@ -30,6 +34,220 @@ namespace lfs::mcp {
             auto* buf = static_cast<std::vector<uint8_t>*>(context);
             auto* bytes = static_cast<const uint8_t*>(data);
             buf->insert(buf->end(), bytes, bytes + size);
+        }
+
+        core::Tensor ensure_cuda_bool_mask(const core::Tensor& mask) {
+            auto result = (mask.dtype() == core::DataType::Bool) ? mask : mask.to(core::DataType::Bool);
+            if (result.device() != core::Device::CUDA) {
+                result = result.cuda();
+            }
+            return result;
+        }
+
+        int64_t count_selected(const core::Tensor& mask) {
+            if (!mask.is_valid()) {
+                return 0;
+            }
+            const auto bool_mask = (mask.dtype() == core::DataType::Bool) ? mask : mask.to(core::DataType::Bool);
+            return static_cast<int64_t>(bool_mask.sum_scalar());
+        }
+
+        core::Tensor& reset_cuda_bool_scratch(core::Tensor& buffer, const size_t size) {
+            const bool needs_realloc = !buffer.is_valid() ||
+                                       buffer.device() != core::Device::CUDA ||
+                                       buffer.dtype() != core::DataType::Bool ||
+                                       buffer.numel() != size;
+            if (needs_realloc) {
+                buffer = core::Tensor::zeros({size}, core::Device::CUDA, core::DataType::Bool);
+                return buffer;
+            }
+
+            buffer.zero_();
+            return buffer;
+        }
+
+        core::Tensor& reset_cuda_uint8_scratch(core::Tensor& buffer, const size_t size) {
+            const bool needs_realloc = !buffer.is_valid() ||
+                                       buffer.device() != core::Device::CUDA ||
+                                       buffer.dtype() != core::DataType::UInt8 ||
+                                       buffer.numel() != size;
+            if (needs_realloc) {
+                buffer = core::Tensor::zeros({size}, core::Device::CUDA, core::DataType::UInt8);
+                return buffer;
+            }
+
+            buffer.zero_();
+            return buffer;
+        }
+
+        core::Tensor& acquire_selection_output_buffer(std::array<core::Tensor, 2>& buffers,
+                                                      size_t& next_index,
+                                                      const size_t size) {
+            auto& buffer = reset_cuda_uint8_scratch(buffers[next_index], size);
+            next_index = (next_index + 1) % buffers.size();
+            return buffer;
+        }
+
+        core::Tensor& upload_polygon_vertices_to_cuda(const std::vector<float>& vertices,
+                                                      core::Tensor& device_buffer) {
+            const size_t num_vertices = vertices.size() / 2;
+            const bool needs_realloc = !device_buffer.is_valid() ||
+                                       device_buffer.device() != core::Device::CUDA ||
+                                       device_buffer.dtype() != core::DataType::Float32 ||
+                                       device_buffer.shape().rank() != 2 ||
+                                       device_buffer.size(0) != num_vertices ||
+                                       device_buffer.size(1) != 2;
+            if (needs_realloc) {
+                device_buffer = core::Tensor::empty({num_vertices, size_t{2}},
+                                                    core::Device::CUDA,
+                                                    core::DataType::Float32);
+            }
+
+            auto host_view = core::Tensor::from_blob(const_cast<float*>(vertices.data()),
+                                                     {num_vertices, size_t{2}},
+                                                     core::Device::CPU,
+                                                     core::DataType::Float32);
+            device_buffer.copy_from(host_view);
+            return device_buffer;
+        }
+
+        std::expected<int, std::string> pick_headless_ring_gaussian(
+            const core::Camera& camera,
+            const core::SplatData& model,
+            const float x,
+            const float y) {
+
+            core::Tensor bg = core::Tensor::zeros({3}, core::Device::CUDA);
+            unsigned long long* hovered_depth_id_device = nullptr;
+            unsigned long long* hovered_depth_id_host = nullptr;
+
+            const auto cleanup = [&]() {
+                if (hovered_depth_id_device) {
+                    cudaFree(hovered_depth_id_device);
+                    hovered_depth_id_device = nullptr;
+                }
+                if (hovered_depth_id_host) {
+                    cudaFreeHost(hovered_depth_id_host);
+                    hovered_depth_id_host = nullptr;
+                }
+            };
+
+            if (cudaMalloc(&hovered_depth_id_device, sizeof(unsigned long long)) != cudaSuccess) {
+                return std::unexpected("Failed to allocate ring hover buffer");
+            }
+            if (cudaMallocHost(&hovered_depth_id_host, sizeof(unsigned long long)) != cudaSuccess) {
+                cleanup();
+                return std::unexpected("Failed to allocate ring hover readback buffer");
+            }
+            if (cudaMemset(hovered_depth_id_device, 0xFF, sizeof(unsigned long long)) != cudaSuccess) {
+                cleanup();
+                return std::unexpected("Failed to reset ring hover buffer");
+            }
+
+            try {
+                auto [image, alpha] = rendering::rasterize_tensor(
+                    camera,
+                    model,
+                    bg,
+                    false,   // show_rings
+                    0.01f,   // ring_width
+                    nullptr, // model_transforms
+                    nullptr, // transform_indices
+                    nullptr, // selection_mask
+                    nullptr, // screen_positions_out
+                    true,    // brush_active
+                    x,
+                    y,
+                    0.0f,    // brush_radius
+                    true,    // brush_add_mode
+                    nullptr, // brush_selection_out
+                    false,   // brush_saturation_mode
+                    0.0f,    // brush_saturation_amount
+                    true,    // selection_mode_rings
+                    false,   // show_center_markers
+                    nullptr, // crop_box_transform
+                    nullptr, // crop_box_min
+                    nullptr, // crop_box_max
+                    false,   // crop_inverse
+                    false,   // crop_desaturate
+                    -1,      // crop_parent_node_index
+                    nullptr, // ellipsoid_transform
+                    nullptr, // ellipsoid_radii
+                    false,   // ellipsoid_inverse
+                    false,   // ellipsoid_desaturate
+                    -1,      // ellipsoid_parent_node_index
+                    nullptr, // depth_filter_transform
+                    nullptr, // depth_filter_min
+                    nullptr, // depth_filter_max
+                    nullptr, // deleted_mask
+                    hovered_depth_id_device,
+                    -1); // highlight_gaussian_id
+                (void)image;
+                (void)alpha;
+            } catch (const std::exception& e) {
+                cleanup();
+                return std::unexpected(std::string("Ring pick render failed: ") + e.what());
+            }
+
+            if (cudaMemcpy(hovered_depth_id_host, hovered_depth_id_device,
+                           sizeof(unsigned long long), cudaMemcpyDeviceToHost) != cudaSuccess) {
+                cleanup();
+                return std::unexpected("Failed to read back ring hover result");
+            }
+
+            constexpr auto NO_HOVERED_RESULT = std::numeric_limits<unsigned long long>::max();
+            const unsigned long long packed = *hovered_depth_id_host;
+            cleanup();
+
+            if (packed == NO_HOVERED_RESULT) {
+                return std::unexpected("No hovered gaussian");
+            }
+
+            return static_cast<int>(packed & 0xFFFFFFFFu);
+        }
+
+        std::expected<int64_t, std::string> apply_headless_selection(
+            core::Scene& scene,
+            core::Tensor& locked_groups_device_mask,
+            std::array<core::Tensor, 2>& selection_output_buffers,
+            size_t& selection_output_buffer_index,
+            const core::Tensor& raw_selection,
+            const std::string& mode) {
+
+            auto selection_mask = ensure_cuda_bool_mask(raw_selection);
+            if (!selection_mask.is_valid()) {
+                return std::unexpected("Invalid selection mask");
+            }
+
+            auto locked_groups = vis::selection::upload_locked_group_mask(scene, locked_groups_device_mask);
+            if (!locked_groups) {
+                return std::unexpected(locked_groups.error());
+            }
+
+            const auto existing_mask = scene.getSelectionMask();
+            const core::Tensor empty_mask;
+            const auto& existing_ref = (existing_mask && existing_mask->is_valid()) ? *existing_mask : empty_mask;
+            const auto transform_indices = scene.getTransformIndices();
+            const bool add_mode = (mode != "remove");
+            const bool replace_mode = (mode == "replace");
+            auto& output_mask = acquire_selection_output_buffer(
+                selection_output_buffers, selection_output_buffer_index, selection_mask.numel());
+
+            rendering::apply_selection_group_tensor_mask(
+                selection_mask,
+                existing_ref,
+                output_mask,
+                scene.getActiveSelectionGroup(),
+                *locked_groups,
+                add_mode,
+                transform_indices.get(),
+                {},
+                replace_mode);
+
+            auto new_selection = std::make_shared<core::Tensor>(output_mask);
+            const int64_t count = count_selected(*new_selection);
+            scene.setSelectionMask(new_selection);
+            return count;
         }
     } // namespace
 
@@ -581,7 +799,7 @@ namespace lfs::mcp {
                 const auto& screen_positions = *screen_pos_result;
                 const auto N = static_cast<size_t>(screen_positions.shape()[0]);
 
-                core::Tensor selection = core::Tensor::zeros({N}, core::Device::CUDA, core::DataType::UInt8);
+                auto& selection = reset_cuda_bool_scratch(ctx.selection_scratch_buffer(), N);
 
                 if (mode == "replace") {
                     rendering::rect_select_tensor(screen_positions, x0, y0, x1, y1, selection);
@@ -590,29 +808,17 @@ namespace lfs::mcp {
                     rendering::rect_select_mode_tensor(screen_positions, x0, y0, x1, y1, selection, add_mode);
                 }
 
-                auto existing_mask = scene->getSelectionMask();
-                if (!existing_mask) {
-                    existing_mask = std::make_shared<core::Tensor>(
-                        core::Tensor::zeros({N}, core::Device::CUDA, core::DataType::UInt8));
+                auto result = apply_headless_selection(*scene,
+                                                       ctx.selection_locked_groups_device_mask(),
+                                                       ctx.selection_output_buffers(),
+                                                       ctx.selection_output_buffer_index(),
+                                                       selection,
+                                                       mode);
+                if (!result) {
+                    return json{{"error", result.error()}};
                 }
 
-                core::Tensor output_mask = core::Tensor::zeros({N}, core::Device::CUDA, core::DataType::UInt8);
-                uint32_t locked_groups[8] = {0};
-
-                rendering::apply_selection_group_tensor(
-                    selection, *existing_mask, output_mask,
-                    1, locked_groups, true);
-
-                scene->setSelectionMask(std::make_shared<core::Tensor>(std::move(output_mask)));
-
-                int64_t count = 0;
-                auto mask_vec = scene->getSelectionMask()->to_vector_uint8();
-                for (auto v : mask_vec) {
-                    if (v > 0)
-                        count++;
-                }
-
-                return json{{"success", true}, {"selected_count", count}};
+                return json{{"success", true}, {"selected_count", *result}};
             });
 
         registry.register_tool(
@@ -630,16 +836,6 @@ namespace lfs::mcp {
                 auto& ctx = TrainingContext::instance();
 
                 int camera_index = args.value("camera_index", 0);
-                auto screen_pos_result = ctx.compute_screen_positions(camera_index);
-                if (!screen_pos_result) {
-                    return json{{"error", screen_pos_result.error()}};
-                }
-
-                auto scene = ctx.scene();
-                if (!scene) {
-                    return json{{"error", "No scene loaded"}};
-                }
-
                 const auto& points = args["points"];
                 const size_t num_vertices = points.size();
                 if (num_vertices < 3) {
@@ -653,16 +849,34 @@ namespace lfs::mcp {
                     vertex_data.push_back(pt[1].get<float>());
                 }
 
-                core::Tensor polygon_vertices = core::Tensor::from_vector(
-                    vertex_data,
-                    {num_vertices, 2},
-                    core::Device::CUDA);
-
                 const std::string mode = args.value("mode", "replace");
+
+                SelectionClient client;
+                if (client.is_gui_running()) {
+                    auto result = client.select_polygon(vertex_data, mode, camera_index);
+                    if (!result) {
+                        return json{{"error", result.error()}};
+                    }
+                    return json{{"success", true}, {"via_gui", true}};
+                }
+
+                auto screen_pos_result = ctx.compute_screen_positions(camera_index);
+                if (!screen_pos_result) {
+                    return json{{"error", screen_pos_result.error()}};
+                }
+
+                auto scene = ctx.scene();
+                if (!scene) {
+                    return json{{"error", "No scene loaded"}};
+                }
+
                 const auto& screen_positions = *screen_pos_result;
                 const auto N = static_cast<size_t>(screen_positions.shape()[0]);
 
-                core::Tensor selection = core::Tensor::zeros({N}, core::Device::CUDA, core::DataType::UInt8);
+                auto& polygon_vertices = upload_polygon_vertices_to_cuda(
+                    vertex_data,
+                    ctx.selection_polygon_vertex_buffer());
+                auto& selection = reset_cuda_bool_scratch(ctx.selection_scratch_buffer(), N);
 
                 if (mode == "replace") {
                     rendering::polygon_select_tensor(screen_positions, polygon_vertices, selection);
@@ -671,29 +885,166 @@ namespace lfs::mcp {
                     rendering::polygon_select_mode_tensor(screen_positions, polygon_vertices, selection, add_mode);
                 }
 
-                auto existing_mask = scene->getSelectionMask();
-                if (!existing_mask) {
-                    existing_mask = std::make_shared<core::Tensor>(
-                        core::Tensor::zeros({N}, core::Device::CUDA, core::DataType::UInt8));
+                auto result = apply_headless_selection(*scene,
+                                                       ctx.selection_locked_groups_device_mask(),
+                                                       ctx.selection_output_buffers(),
+                                                       ctx.selection_output_buffer_index(),
+                                                       selection,
+                                                       mode);
+                if (!result) {
+                    return json{{"error", result.error()}};
                 }
 
-                core::Tensor output_mask = core::Tensor::zeros({N}, core::Device::CUDA, core::DataType::UInt8);
-                uint32_t locked_groups[8] = {0};
+                return json{{"success", true}, {"selected_count", *result}};
+            });
 
-                rendering::apply_selection_group_tensor(
-                    selection, *existing_mask, output_mask,
-                    1, locked_groups, true);
+        registry.register_tool(
+            McpTool{
+                .name = "selection.lasso",
+                .description = "Select Gaussians inside a screen-space lasso path",
+                .input_schema = {
+                    .type = "object",
+                    .properties = json{
+                        {"points", json{{"type", "array"}, {"items", json{{"type", "array"}, {"items", json{{"type", "number"}}}}}, {"description", "Lasso points [[x0,y0], [x1,y1], ...]"}}},
+                        {"camera_index", json{{"type", "integer"}, {"description", "Camera index (default: 0)"}}},
+                        {"mode", json{{"type", "string"}, {"enum", json::array({"replace", "add", "remove"})}, {"description", "Selection mode (default: replace)"}}}},
+                    .required = {"points"}}},
+            [](const json& args) -> json {
+                auto& ctx = TrainingContext::instance();
 
-                scene->setSelectionMask(std::make_shared<core::Tensor>(std::move(output_mask)));
-
-                int64_t count = 0;
-                auto mask_vec = scene->getSelectionMask()->to_vector_uint8();
-                for (auto v : mask_vec) {
-                    if (v > 0)
-                        count++;
+                const int camera_index = args.value("camera_index", 0);
+                const auto& points = args["points"];
+                const size_t num_vertices = points.size();
+                if (num_vertices < 3) {
+                    return json{{"error", "Lasso requires at least 3 points"}};
                 }
 
-                return json{{"success", true}, {"selected_count", count}};
+                std::vector<float> vertex_data;
+                vertex_data.reserve(num_vertices * 2);
+                for (const auto& pt : points) {
+                    vertex_data.push_back(pt[0].get<float>());
+                    vertex_data.push_back(pt[1].get<float>());
+                }
+
+                const std::string mode = args.value("mode", "replace");
+
+                SelectionClient client;
+                if (client.is_gui_running()) {
+                    auto result = client.select_lasso(vertex_data, mode, camera_index);
+                    if (!result) {
+                        return json{{"error", result.error()}};
+                    }
+                    return json{{"success", true}, {"via_gui", true}};
+                }
+
+                auto screen_pos_result = ctx.compute_screen_positions(camera_index);
+                if (!screen_pos_result) {
+                    return json{{"error", screen_pos_result.error()}};
+                }
+
+                auto scene = ctx.scene();
+                if (!scene) {
+                    return json{{"error", "No scene loaded"}};
+                }
+
+                const auto& screen_positions = *screen_pos_result;
+                const auto N = static_cast<size_t>(screen_positions.shape()[0]);
+
+                auto& lasso_vertices = upload_polygon_vertices_to_cuda(
+                    vertex_data,
+                    ctx.selection_polygon_vertex_buffer());
+                auto& selection = reset_cuda_bool_scratch(ctx.selection_scratch_buffer(), N);
+
+                if (mode == "replace") {
+                    rendering::polygon_select_tensor(screen_positions, lasso_vertices, selection);
+                } else {
+                    const bool add_mode = (mode == "add");
+                    rendering::polygon_select_mode_tensor(screen_positions, lasso_vertices, selection, add_mode);
+                }
+
+                auto result = apply_headless_selection(*scene,
+                                                       ctx.selection_locked_groups_device_mask(),
+                                                       ctx.selection_output_buffers(),
+                                                       ctx.selection_output_buffer_index(),
+                                                       selection,
+                                                       mode);
+                if (!result) {
+                    return json{{"error", result.error()}};
+                }
+
+                return json{{"success", true}, {"selected_count", *result}};
+            });
+
+        registry.register_tool(
+            McpTool{
+                .name = "selection.ring",
+                .description = "Select the front-most Gaussian under a screen point using ring-mode picking",
+                .input_schema = {
+                    .type = "object",
+                    .properties = json{
+                        {"x", json{{"type", "number"}, {"description", "X coordinate"}}},
+                        {"y", json{{"type", "number"}, {"description", "Y coordinate"}}},
+                        {"camera_index", json{{"type", "integer"}, {"description", "Camera index (default: 0)"}}},
+                        {"mode", json{{"type", "string"}, {"enum", json::array({"replace", "add", "remove"})}, {"description", "Selection mode (default: replace)"}}}},
+                    .required = {"x", "y"}}},
+            [](const json& args) -> json {
+                auto& ctx = TrainingContext::instance();
+
+                const float x = args["x"].get<float>();
+                const float y = args["y"].get<float>();
+                int camera_index = args.value("camera_index", 0);
+                const std::string mode = args.value("mode", "replace");
+
+                SelectionClient client;
+                if (client.is_gui_running()) {
+                    auto result = client.select_ring(x, y, mode, camera_index);
+                    if (!result) {
+                        return json{{"error", result.error()}};
+                    }
+                    return json{{"success", true}, {"via_gui", true}};
+                }
+
+                auto scene = ctx.scene();
+                if (!scene) {
+                    return json{{"error", "No scene loaded"}};
+                }
+
+                auto* model = scene->getTrainingModel();
+                if (!model) {
+                    return json{{"error", "No model loaded"}};
+                }
+
+                auto cameras = scene->getAllCameras();
+                if (cameras.empty()) {
+                    return json{{"error", "No cameras available"}};
+                }
+                if (camera_index < 0 || camera_index >= static_cast<int>(cameras.size())) {
+                    camera_index = 0;
+                }
+                if (!cameras[camera_index]) {
+                    return json{{"error", "Failed to get camera"}};
+                }
+
+                auto hovered_id = pick_headless_ring_gaussian(*cameras[camera_index], *model, x, y);
+                if (!hovered_id) {
+                    return json{{"error", hovered_id.error()}};
+                }
+
+                const size_t total = scene->getTotalGaussianCount();
+                auto& selection = reset_cuda_bool_scratch(ctx.selection_scratch_buffer(), total);
+                rendering::set_selection_element(selection.ptr<bool>(), *hovered_id, true);
+
+                auto result = apply_headless_selection(*scene,
+                                                       ctx.selection_locked_groups_device_mask(),
+                                                       ctx.selection_output_buffers(),
+                                                       ctx.selection_output_buffer_index(),
+                                                       selection,
+                                                       mode);
+                if (!result) {
+                    return json{{"error", result.error()}};
+                }
+
+                return json{{"success", true}, {"selected_count", *result}};
             });
 
         registry.register_tool(
@@ -712,7 +1063,21 @@ namespace lfs::mcp {
             [](const json& args) -> json {
                 auto& ctx = TrainingContext::instance();
 
-                int camera_index = args.value("camera_index", 0);
+                const float x = args["x"].get<float>();
+                const float y = args["y"].get<float>();
+                const float radius = args.value("radius", 20.0f);
+                const int camera_index = args.value("camera_index", 0);
+                const std::string mode = args.value("mode", "replace");
+
+                SelectionClient client;
+                if (client.is_gui_running()) {
+                    auto result = client.select_brush(x, y, radius, mode, camera_index);
+                    if (!result) {
+                        return json{{"error", result.error()}};
+                    }
+                    return json{{"success", true}, {"via_gui", true}};
+                }
+
                 auto screen_pos_result = ctx.compute_screen_positions(camera_index);
                 if (!screen_pos_result) {
                     return json{{"error", screen_pos_result.error()}};
@@ -723,41 +1088,23 @@ namespace lfs::mcp {
                     return json{{"error", "No scene loaded"}};
                 }
 
-                const float x = args["x"].get<float>();
-                const float y = args["y"].get<float>();
-                const float radius = args.value("radius", 20.0f);
-
                 const auto& screen_positions = *screen_pos_result;
                 const auto N = static_cast<size_t>(screen_positions.shape()[0]);
 
-                core::Tensor selection = core::Tensor::zeros({N}, core::Device::CUDA, core::DataType::UInt8);
+                auto& selection = reset_cuda_bool_scratch(ctx.selection_scratch_buffer(), N);
                 rendering::brush_select_tensor(screen_positions, x, y, radius, selection);
 
-                auto existing_mask = scene->getSelectionMask();
-                if (!existing_mask) {
-                    existing_mask = std::make_shared<core::Tensor>(
-                        core::Tensor::zeros({N}, core::Device::CUDA, core::DataType::UInt8));
+                auto result = apply_headless_selection(*scene,
+                                                       ctx.selection_locked_groups_device_mask(),
+                                                       ctx.selection_output_buffers(),
+                                                       ctx.selection_output_buffer_index(),
+                                                       selection,
+                                                       mode);
+                if (!result) {
+                    return json{{"error", result.error()}};
                 }
 
-                const std::string mode = args.value("mode", "replace");
-                core::Tensor output_mask = core::Tensor::zeros({N}, core::Device::CUDA, core::DataType::UInt8);
-                uint32_t locked_groups[8] = {0};
-
-                bool add_mode = (mode != "remove");
-                rendering::apply_selection_group_tensor(
-                    selection, *existing_mask, output_mask,
-                    1, locked_groups, add_mode);
-
-                scene->setSelectionMask(std::make_shared<core::Tensor>(std::move(output_mask)));
-
-                int64_t count = 0;
-                auto mask_vec = scene->getSelectionMask()->to_vector_uint8();
-                for (auto v : mask_vec) {
-                    if (v > 0)
-                        count++;
-                }
-
-                return json{{"success", true}, {"selected_count", count}};
+                return json{{"success", true}, {"selected_count", *result}};
             });
 
         registry.register_tool(
@@ -967,37 +1314,25 @@ namespace lfs::mcp {
                 const auto& screen_positions = *screen_pos_result;
                 const auto N = static_cast<size_t>(screen_positions.shape()[0]);
 
-                core::Tensor selection = core::Tensor::zeros({static_cast<size_t>(N)}, core::Device::CUDA, core::DataType::UInt8);
+                auto& selection = reset_cuda_bool_scratch(ctx.selection_scratch_buffer(), static_cast<size_t>(N));
                 rendering::rect_select_tensor(screen_positions, x0, y0, x1, y1, selection);
 
-                auto existing_mask = scene->getSelectionMask();
-                if (!existing_mask) {
-                    existing_mask = std::make_shared<core::Tensor>(
-                        core::Tensor::zeros({static_cast<size_t>(N)}, core::Device::CUDA, core::DataType::UInt8));
+                auto selection_result = apply_headless_selection(*scene,
+                                                                 ctx.selection_locked_groups_device_mask(),
+                                                                 ctx.selection_output_buffers(),
+                                                                 ctx.selection_output_buffer_index(),
+                                                                 selection,
+                                                                 "replace");
+                if (!selection_result) {
+                    return json{{"error", selection_result.error()}};
                 }
 
-                core::Tensor output_mask = core::Tensor::zeros({static_cast<size_t>(N)}, core::Device::CUDA, core::DataType::UInt8);
-                uint32_t locked_groups[8] = {0};
-
-                rendering::apply_selection_group_tensor(
-                    selection, *existing_mask, output_mask,
-                    1, locked_groups, true);
-
-                scene->setSelectionMask(std::make_shared<core::Tensor>(std::move(output_mask)));
-
-                int64_t count = 0;
-                auto mask_vec = scene->getSelectionMask()->to_vector_uint8();
-                for (auto v : mask_vec) {
-                    if (v > 0)
-                        count++;
-                }
-
-                json result;
-                result["success"] = true;
-                result["selected_count"] = count;
-                result["bounding_box"] = bbox;
-                result["description"] = description;
-                return result;
+                json json_response;
+                json_response["success"] = true;
+                json_response["selected_count"] = *selection_result;
+                json_response["bounding_box"] = bbox;
+                json_response["description"] = description;
+                return json_response;
             });
     }
 

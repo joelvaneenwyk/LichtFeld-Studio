@@ -13,20 +13,20 @@
 #include "internal/viewport.hpp"
 #include "python/python_runtime.hpp"
 #include "rendering/rendering_manager.hpp"
+#include "visualizer/gui/video_widget_interface.hpp"
 #include "visualizer_impl.hpp"
-#include "windows/video_extractor_dialog.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 
 namespace lfs::vis::gui::native_panels {
 
-    VideoExtractorPanel::VideoExtractorPanel(lfs::gui::VideoExtractorDialog* dialog)
-        : dialog_(dialog) {}
+    VideoExtractorPanel::VideoExtractorPanel(lfs::gui::IVideoExtractorWidget* widget)
+        : widget_(widget) {}
 
     void VideoExtractorPanel::draw(const PanelDrawContext& ctx) {
         (void)ctx;
-        if (!dialog_->render())
+        if (!widget_ || !widget_->render())
             PanelRegistry::instance().set_panel_enabled("native.video_extractor", false);
     }
 

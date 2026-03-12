@@ -71,10 +71,10 @@ namespace lfs::vis {
 
         // Component access
         TrainerManager* getTrainerManager() { return trainer_manager_.get(); }
-        SceneManager* getSceneManager() { return scene_manager_.get(); }
+        SceneManager* getSceneManager() override { return scene_manager_.get(); }
         SDL_Window* getWindow() const { return window_manager_->getWindow(); }
         WindowManager* getWindowManager() { return window_manager_.get(); }
-        RenderingManager* getRenderingManager() { return rendering_manager_.get(); }
+        RenderingManager* getRenderingManager() override { return rendering_manager_.get(); }
         gui::GuiManager* getGuiManager() { return gui_manager_.get(); }
         const Viewport& getViewport() const { return viewport_; }
         Viewport& getViewport() { return viewport_; }

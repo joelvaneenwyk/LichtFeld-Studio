@@ -61,6 +61,9 @@ class InputSettingsPanel(Panel):
         ],
         "depth": [
             lf.keymap.Action.TOGGLE_DEPTH_MODE,
+            lf.keymap.Action.TOGGLE_SELECTION_DEPTH_FILTER,
+            lf.keymap.Action.TOGGLE_SELECTION_CROP_FILTER,
+            lf.keymap.Action.DEPTH_ADJUST_NEAR,
             lf.keymap.Action.DEPTH_ADJUST_FAR,
             lf.keymap.Action.DEPTH_ADJUST_SIDE,
         ],

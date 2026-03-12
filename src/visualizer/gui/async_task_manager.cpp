@@ -12,7 +12,6 @@
 #include "gui/panel_registry.hpp"
 #include "gui/utils/windows_utils.hpp"
 #include "io/exporter.hpp"
-#include "io/video/video_encoder.hpp"
 #include "rendering/mesh2splat.hpp"
 #include "rendering/rendering.hpp"
 #include "rendering/rendering_manager.hpp"
@@ -20,6 +19,7 @@
 #include "sequencer/keyframe.hpp"
 #include "sequencer/sequencer_controller.hpp"
 #include "training/training_manager.hpp"
+#include "visualizer/gui/video_widget_interface.hpp"
 #include "visualizer_impl.hpp"
 #include <algorithm>
 #include <format>
@@ -586,14 +586,24 @@ namespace lfs::vis::gui {
              splat_ptr, engine, render_settings,
              frame_states = std::move(frame_states),
              export_pin = std::move(export_pin)](std::stop_token stop_token) {
-                io::video::VideoEncoder encoder;
+                auto encoder = lfs::gui::createVideoEncoder();
+                if (!encoder) {
+                    std::lock_guard lock(video_export_state_.mutex);
+                    video_export_state_.error = "Video encoder not available";
+                    video_export_state_.stage = "Failed";
+                    video_export_state_.active.store(false);
+                    lfs::core::events::state::VideoExportFailed{
+                        .error = "Video encoder not available"}
+                        .emit();
+                    return;
+                }
 
                 {
                     std::lock_guard lock(video_export_state_.mutex);
                     video_export_state_.stage = "Opening encoder";
                 }
 
-                auto result = encoder.open(path, options);
+                auto result = encoder->open(path, options);
                 if (!result) {
                     {
                         std::lock_guard lock(video_export_state_.mutex);
@@ -642,7 +652,7 @@ namespace lfs::vis::gui {
                     }
 
                     const auto* const gpu_ptr = image_hwc.data_ptr();
-                    auto write_result = encoder.writeFrameGpu(gpu_ptr, width, height, nullptr);
+                    auto write_result = encoder->writeFrameGpu(gpu_ptr, width, height, nullptr);
                     if (!write_result) {
                         std::lock_guard lock(video_export_state_.mutex);
                         video_export_state_.error = write_result.error();
@@ -665,7 +675,7 @@ namespace lfs::vis::gui {
                     video_export_state_.stage = "Finalizing";
                 }
 
-                if (auto close_result = encoder.close(); !close_result) {
+                if (auto close_result = encoder->close(); !close_result) {
                     std::lock_guard lock(video_export_state_.mutex);
                     video_export_state_.error = close_result.error();
                     video_export_state_.stage = "Failed";

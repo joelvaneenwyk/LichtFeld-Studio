@@ -378,6 +378,7 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_BINARY_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src/app/include  # For app headers
         ${CMAKE_CURRENT_SOURCE_DIR}/src              # For training/, visualizer/, etc.
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/visualizer   # For internal visualizer headers used by GUI MCP
         ${CMAKE_CURRENT_SOURCE_DIR}/src/rendering/include  # For rendering headers (MCP GUI tools)
         ${CMAKE_CURRENT_SOURCE_DIR}/external         # For external headers
 
@@ -394,6 +395,7 @@ target_link_libraries(${PROJECT_NAME}
         lfs_geometry
         lfs_core
         lfs_io
+        lfs_video
         fastlfs_backend
         lfs_python_utils
 

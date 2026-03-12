@@ -17,7 +17,6 @@
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
 #include "core/splat_data.hpp"
-#include "formats/ply.hpp"
 #include "io/exporter.hpp"
 #include "io/loader.hpp"
 #include "training/dataset.hpp"

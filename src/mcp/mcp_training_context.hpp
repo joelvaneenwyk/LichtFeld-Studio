@@ -9,6 +9,7 @@
 #include "core/tensor.hpp"
 #include "training/trainer.hpp"
 
+#include <array>
 #include <atomic>
 #include <expected>
 #include <filesystem>
@@ -16,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 namespace lfs::mcp {
 
@@ -59,6 +61,11 @@ namespace lfs::mcp {
         training::Trainer* trainer() { return trainer_.get(); }
         const core::param::TrainingParameters& params() const { return params_; }
         core::param::TrainingParameters& params_mutable() { return params_; }
+        core::Tensor& selection_locked_groups_device_mask() { return locked_groups_device_mask_; }
+        core::Tensor& selection_scratch_buffer() { return selection_scratch_buffer_; }
+        core::Tensor& selection_polygon_vertex_buffer() { return selection_polygon_vertex_buffer_; }
+        std::array<core::Tensor, 2>& selection_output_buffers() { return selection_output_buffers_; }
+        size_t& selection_output_buffer_index() { return selection_output_buffer_index_; }
 
         void shutdown();
 
@@ -71,6 +78,11 @@ namespace lfs::mcp {
         std::shared_ptr<core::Scene> scene_;
         std::unique_ptr<training::Trainer> trainer_;
         core::param::TrainingParameters params_;
+        core::Tensor locked_groups_device_mask_;
+        core::Tensor selection_scratch_buffer_;
+        core::Tensor selection_polygon_vertex_buffer_;
+        std::array<core::Tensor, 2> selection_output_buffers_;
+        size_t selection_output_buffer_index_ = 0;
 
         std::unique_ptr<std::jthread> training_thread_;
         std::mutex mutex_;

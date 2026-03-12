@@ -18,18 +18,18 @@ namespace lfs::vis::gui {
 } // namespace lfs::vis::gui
 
 namespace lfs::gui {
-    class VideoExtractorDialog;
+    class IVideoExtractorWidget;
 }
 
 namespace lfs::vis::gui::native_panels {
 
     class VideoExtractorPanel : public IPanel {
     public:
-        explicit VideoExtractorPanel(lfs::gui::VideoExtractorDialog* dialog);
+        explicit VideoExtractorPanel(lfs::gui::IVideoExtractorWidget* widget);
         void draw(const PanelDrawContext& ctx) override;
 
     private:
-        lfs::gui::VideoExtractorDialog* dialog_;
+        lfs::gui::IVideoExtractorWidget* widget_;
     };
 
     class StartupOverlayPanel : public IPanel {

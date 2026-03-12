@@ -21,6 +21,8 @@ namespace lfs::core::param {
 }
 
 namespace lfs::vis {
+    class SceneManager;
+    class RenderingManager;
 
     struct LFS_VIS_API ViewerOptions {
         std::string title = "LichtFeld Studio";
@@ -48,6 +50,8 @@ namespace lfs::vis {
         virtual void consolidateModels() = 0;
         virtual void clearScene() = 0;
         virtual core::Scene& getScene() = 0;
+        virtual SceneManager* getSceneManager() = 0;
+        virtual RenderingManager* getRenderingManager() = 0;
 
         virtual void postWork(std::function<void()> fn) = 0;
         virtual std::expected<void, std::string> startTraining() = 0;

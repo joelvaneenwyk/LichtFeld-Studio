@@ -4,6 +4,7 @@
 #include "py_selection.hpp"
 #include "core/cuda/selection_ops.hpp"
 #include "core/tensor.hpp"
+#include "geometry/euclidean_transform.hpp"
 #include "py_tensor.hpp"
 #include "python/python_runtime.hpp"
 #include "rendering/rasterizer/rasterization/include/forward.h"
@@ -14,7 +15,9 @@
 #include "visualizer/scene/scene_manager.hpp"
 #include "visualizer/selection/selection_service.hpp"
 
+#include <algorithm>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/pair.h>
@@ -27,11 +30,44 @@ namespace nb = nanobind;
 namespace lfs::python {
 
     namespace {
+        constexpr float DEPTH_FILTER_HALF_HEIGHT = 10000.0f;
+
         vis::RenderingManager* get_rm() { return get_rendering_manager(); }
 
         vis::SceneManager* get_sm() { return get_scene_manager(); }
 
         vis::SelectionService* get_ss() { return get_selection_service(); }
+
+        void configure_depth_filter(vis::RenderSettings& settings, const bool enabled,
+                                    const float depth_near, const float depth_far,
+                                    const float frustum_half_width) {
+            const float clamped_near = std::max(depth_near, 0.0f);
+            const float clamped_far = std::max(depth_far, clamped_near);
+            const float clamped_width = std::max(frustum_half_width, 0.05f);
+
+            settings.depth_filter_enabled = enabled;
+            settings.depth_filter_min = glm::vec3(-clamped_width, -DEPTH_FILTER_HALF_HEIGHT, clamped_near);
+            settings.depth_filter_max = glm::vec3(clamped_width, DEPTH_FILTER_HALF_HEIGHT, clamped_far);
+
+            if (!enabled) {
+                return;
+            }
+
+            if (auto view_info = vis::get_current_view_info()) {
+                glm::mat3 rotation(1.0f);
+                for (int row = 0; row < 3; ++row) {
+                    for (int col = 0; col < 3; ++col) {
+                        rotation[col][row] = view_info->rotation[row * 3 + col];
+                    }
+                }
+
+                settings.depth_filter_transform = lfs::geometry::EuclideanTransform(
+                    glm::quat_cast(rotation),
+                    glm::vec3(view_info->translation[0],
+                              view_info->translation[1],
+                              view_info->translation[2]));
+            }
+        }
     } // namespace
 
     void register_selection(nb::module_& m) {
@@ -244,17 +280,12 @@ namespace lfs::python {
 
         // Polygon preview
         sel.def(
-            "draw_polygon_preview", [](const std::vector<std::tuple<float, float, float>>& points, bool closed, bool add_mode) {
+            "draw_polygon_preview", [](const std::vector<std::pair<float, float>>& points, bool closed, bool add_mode) {
                 if (auto* rm = get_rm()) {
-                    std::vector<glm::vec3> world_points;
-                    world_points.reserve(points.size());
-                    for (const auto& [x, y, z] : points) {
-                        world_points.emplace_back(x, y, z);
-                    }
-                    rm->setPolygonPreview(world_points, closed, add_mode);
+                    rm->setPolygonPreview(points, closed, add_mode);
                 }
             },
-            nb::arg("points"), nb::arg("closed") = false, nb::arg("add_mode") = true, "Draw polygon selection preview (world-space 3D points)");
+            nb::arg("points"), nb::arg("closed") = false, nb::arg("add_mode") = true, "Draw polygon selection preview (render-space 2D points)");
 
         sel.def(
             "clear_polygon_preview", []() {
@@ -318,17 +349,26 @@ namespace lfs::python {
         // ─────────────────────────────────────────────────────────────────────
 
         sel.def(
-            "set_depth_filter", [](bool enabled, float depth_far, float frustum_half_width) {
+            "set_depth_filter", [](bool enabled, float depth_far, float frustum_half_width, float depth_near) {
                 auto* rm = get_rm();
                 if (!rm)
                     return;
                 auto settings = rm->getSettings();
-                settings.depth_filter_enabled = enabled;
-                settings.depth_filter_min = glm::vec3(-frustum_half_width, -10000.0f, 0.0f);
-                settings.depth_filter_max = glm::vec3(frustum_half_width, 10000.0f, depth_far);
+                configure_depth_filter(settings, enabled, depth_near, depth_far, frustum_half_width);
                 rm->updateSettings(settings);
             },
-            nb::arg("enabled"), nb::arg("depth_far") = 100.0f, nb::arg("frustum_half_width") = 50.0f, "Set depth filter for selection (frustum-shaped filter in camera space)");
+            nb::arg("enabled"), nb::arg("depth_far") = 100.0f, nb::arg("frustum_half_width") = 50.0f, nb::arg("depth_near") = 0.0f, "Set selection depth filter in camera space. The first three positional arguments remain backward-compatible.");
+
+        sel.def(
+            "set_depth_filter_range", [](bool enabled, float depth_near, float depth_far, float frustum_half_width) {
+                auto* rm = get_rm();
+                if (!rm)
+                    return;
+                auto settings = rm->getSettings();
+                configure_depth_filter(settings, enabled, depth_near, depth_far, frustum_half_width);
+                rm->updateSettings(settings);
+            },
+            nb::arg("enabled"), nb::arg("depth_near") = 0.0f, nb::arg("depth_far") = 100.0f, nb::arg("frustum_half_width") = 50.0f, "Set selection depth filter range in camera space as (near, far, width).");
 
         sel.def(
             "get_depth_filter", []() -> std::tuple<bool, float, float> {
@@ -339,7 +379,20 @@ namespace lfs::python {
                 return {settings.depth_filter_enabled, settings.depth_filter_max.z,
                         settings.depth_filter_max.x};
             },
-            "Get depth filter state: (enabled, depth_far, frustum_half_width)");
+            "Get depth filter state: (enabled, depth_far, frustum_half_width).");
+
+        sel.def(
+            "get_depth_filter_range", []() -> std::tuple<bool, float, float, float> {
+                auto* rm = get_rm();
+                if (!rm)
+                    return {false, 0.0f, 100.0f, 50.0f};
+                const auto& settings = rm->getSettings();
+                return {settings.depth_filter_enabled,
+                        std::max(settings.depth_filter_min.z, 0.0f),
+                        settings.depth_filter_max.z,
+                        settings.depth_filter_max.x};
+            },
+            "Get selection depth filter state: (enabled, depth_near, depth_far, frustum_half_width).");
 
         // ─────────────────────────────────────────────────────────────────────
         // CROP FILTER

@@ -38,6 +38,11 @@ namespace lfs::vis {
 
     namespace {
         constexpr float DEFAULT_VOXEL_SIZE = 0.01f;
+
+        template <typename TRenderable>
+        [[nodiscard]] bool containsRenderableNode(const std::vector<TRenderable>& renderables, const core::NodeId node_id) {
+            return std::ranges::any_of(renderables, [node_id](const auto& item) { return item.node_id == node_id; });
+        }
     } // namespace
 
     using namespace lfs::core::events;
@@ -195,7 +200,11 @@ namespace lfs::vis {
         cmd::SelectAll::when([this](const auto&) { selectAllGaussians(); });
         cmd::CopySelection::when([this](const auto&) { copySelectionToClipboard(); });
         cmd::PasteSelection::when([this](const auto&) { pasteSelectionFromClipboard(); });
-        cmd::SelectRect::when([this](const auto& e) { (void)selectRect(e.x0, e.y0, e.x1, e.y1, e.mode); });
+        cmd::SelectBrush::when([this](const auto& e) { (void)selectBrush(e.x, e.y, e.radius, e.mode, e.camera_index); });
+        cmd::SelectRect::when([this](const auto& e) { (void)selectRect(e.x0, e.y0, e.x1, e.y1, e.mode, e.camera_index); });
+        cmd::SelectPolygon::when([this](const auto& e) { (void)selectPolygon(e.points, e.mode, e.camera_index); });
+        cmd::SelectLasso::when([this](const auto& e) { (void)selectLasso(e.points, e.mode, e.camera_index); });
+        cmd::SelectRing::when([this](const auto& e) { (void)selectRing(e.x, e.y, e.mode, e.camera_index); });
         cmd::ApplySelectionMask::when([this](const auto& e) { (void)applySelectionMask(e.mask); });
 
         state::SelectionChanged::when([](const auto& event) {
@@ -1353,6 +1362,31 @@ namespace lfs::vis {
         return scene_.getCropBoxData(cropbox_id);
     }
 
+    core::NodeId SceneManager::getActiveSelectionCropBoxId() const {
+        const auto visible_cropboxes = scene_.getVisibleCropBoxes();
+
+        const core::NodeId selected_cropbox_id = getSelectedNodeCropBoxId();
+        if (selected_cropbox_id != core::NULL_NODE &&
+            containsRenderableNode(visible_cropboxes, selected_cropbox_id)) {
+            return selected_cropbox_id;
+        }
+
+        std::shared_lock slock(selection_.mutex());
+        const auto& ids = selection_.selectedNodeIds();
+        if (!ids.empty()) {
+            const auto* const node = scene_.getNodeById(*ids.begin());
+            if (node && node->type == core::NodeType::CROPBOX) {
+                return core::NULL_NODE;
+            }
+        }
+
+        if (visible_cropboxes.size() == 1 && visible_cropboxes.front().data) {
+            return visible_cropboxes.front().node_id;
+        }
+
+        return core::NULL_NODE;
+    }
+
     void SceneManager::syncCropBoxToRenderSettings() {
         // Scene graph is single source of truth - just trigger re-render
         if (services().renderingOrNull()) {
@@ -1395,6 +1429,31 @@ namespace lfs::vis {
         if (ellipsoid_id == core::NULL_NODE)
             return nullptr;
         return scene_.getEllipsoidData(ellipsoid_id);
+    }
+
+    core::NodeId SceneManager::getActiveSelectionEllipsoidId() const {
+        const auto visible_ellipsoids = scene_.getVisibleEllipsoids();
+
+        const core::NodeId selected_ellipsoid_id = getSelectedNodeEllipsoidId();
+        if (selected_ellipsoid_id != core::NULL_NODE &&
+            containsRenderableNode(visible_ellipsoids, selected_ellipsoid_id)) {
+            return selected_ellipsoid_id;
+        }
+
+        std::shared_lock slock(selection_.mutex());
+        const auto& ids = selection_.selectedNodeIds();
+        if (!ids.empty()) {
+            const auto* const node = scene_.getNodeById(*ids.begin());
+            if (node && node->type == core::NodeType::ELLIPSOID) {
+                return core::NULL_NODE;
+            }
+        }
+
+        if (visible_ellipsoids.size() == 1 && visible_ellipsoids.front().data) {
+            return visible_ellipsoids.front().node_id;
+        }
+
+        return core::NULL_NODE;
     }
 
     void SceneManager::syncEllipsoidToRenderSettings() {
@@ -3426,7 +3485,7 @@ namespace lfs::vis {
             rm->markDirty(DirtyFlag::SPLATS | DirtyFlag::SELECTION);
     }
 
-    SelectionResult SceneManager::selectRect(float x0, float y0, float x1, float y1, const std::string& mode) {
+    SelectionResult SceneManager::selectBrush(float x, float y, float radius, const std::string& mode, const int camera_index) {
         if (!selection_service_)
             return {false, 0, "Selection service not initialized"};
 
@@ -3436,7 +3495,64 @@ namespace lfs::vis {
         else if (mode == "remove")
             sel_mode = SelectionMode::Remove;
 
-        return selection_service_->selectRect(x0, y0, x1, y1, sel_mode);
+        return selection_service_->selectBrush(x, y, radius, sel_mode, camera_index);
+    }
+
+    SelectionResult SceneManager::selectRect(float x0, float y0, float x1, float y1, const std::string& mode,
+                                             const int camera_index) {
+        if (!selection_service_)
+            return {false, 0, "Selection service not initialized"};
+
+        SelectionMode sel_mode = SelectionMode::Replace;
+        if (mode == "add")
+            sel_mode = SelectionMode::Add;
+        else if (mode == "remove")
+            sel_mode = SelectionMode::Remove;
+
+        return selection_service_->selectRect(x0, y0, x1, y1, sel_mode, camera_index);
+    }
+
+    SelectionResult SceneManager::selectPolygon(const std::vector<float>& points, const std::string& mode,
+                                                const int camera_index) {
+        if (!selection_service_ || points.size() < 6 || (points.size() % 2) != 0)
+            return {false, 0, "Polygon requires at least 3 x/y point pairs"};
+
+        SelectionMode sel_mode = SelectionMode::Replace;
+        if (mode == "add")
+            sel_mode = SelectionMode::Add;
+        else if (mode == "remove")
+            sel_mode = SelectionMode::Remove;
+
+        auto vertices = core::Tensor::from_vector(points, {points.size() / 2, size_t{2}}, core::Device::CUDA);
+        return selection_service_->selectPolygon(vertices, sel_mode, camera_index);
+    }
+
+    SelectionResult SceneManager::selectLasso(const std::vector<float>& points, const std::string& mode,
+                                              const int camera_index) {
+        if (!selection_service_ || points.size() < 6 || (points.size() % 2) != 0)
+            return {false, 0, "Lasso requires at least 3 x/y point pairs"};
+
+        SelectionMode sel_mode = SelectionMode::Replace;
+        if (mode == "add")
+            sel_mode = SelectionMode::Add;
+        else if (mode == "remove")
+            sel_mode = SelectionMode::Remove;
+
+        auto vertices = core::Tensor::from_vector(points, {points.size() / 2, size_t{2}}, core::Device::CUDA);
+        return selection_service_->selectLasso(vertices, sel_mode, camera_index);
+    }
+
+    SelectionResult SceneManager::selectRing(const float x, const float y, const std::string& mode, const int camera_index) {
+        if (!selection_service_)
+            return {false, 0, "Selection service not initialized"};
+
+        SelectionMode sel_mode = SelectionMode::Replace;
+        if (mode == "add")
+            sel_mode = SelectionMode::Add;
+        else if (mode == "remove")
+            sel_mode = SelectionMode::Remove;
+
+        return selection_service_->selectRing(x, y, sel_mode, camera_index);
     }
 
     SelectionResult SceneManager::applySelectionMask(const std::vector<uint8_t>& mask) {
