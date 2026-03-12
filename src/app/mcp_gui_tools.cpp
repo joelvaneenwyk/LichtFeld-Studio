@@ -15,7 +15,7 @@
 #include "io/exporter.hpp"
 #include "mcp/llm_client.hpp"
 #include "mcp/mcp_tools.hpp"
-#include "mcp/selection_client.hpp"
+#include "python/python_runtime.hpp"
 #include "python/runner.hpp"
 #include "rendering/gs_rasterizer_tensor.hpp"
 #include "visualizer/operation/undo_entry.hpp"
@@ -1607,29 +1607,29 @@ namespace lfs::app {
                         {"capability", json{{"type", "string"}, {"description", "Capability name (e.g., 'selection.by_text')"}}},
                         {"args", json{{"type", "object"}, {"description", "Arguments to pass to the capability"}}}},
                     .required = {"capability"}}},
-            [](const json& args) -> json {
+            [viewer](const json& args) -> json {
                 const auto capability = args.value("capability", "");
                 if (capability.empty())
                     return json{{"error", "Missing capability name"}};
 
-                mcp::SelectionClient client;
-                if (!client.is_gui_running())
-                    return json{{"error", "GUI not running"}};
-
                 const std::string args_json = args.contains("args") ? args["args"].dump() : "{}";
-                auto result = client.invoke_capability(capability, args_json);
-                if (!result)
-                    return json{{"error", result.error()}};
 
-                if (!result->success)
-                    return json{{"success", false}, {"error", result->error}};
+                return post_and_wait(viewer, [viewer, capability, args_json]() -> json {
+                    python::SceneContextGuard ctx(&viewer->getScene());
+                    auto result = python::invoke_capability(capability, args_json);
+                    if (!result.success)
+                        return json{{"success", false}, {"error", result.error}};
 
-                try {
-                    return json::parse(result->result_json);
-                } catch (const std::exception& e) {
-                    LOG_WARN("Failed to parse capability result: {}", e.what());
-                    return json{{"success", true}, {"raw_result", result->result_json}};
-                }
+                    if (auto* const rendering_manager = viewer->getRenderingManager())
+                        rendering_manager->markDirty(vis::DirtyFlag::ALL);
+
+                    try {
+                        return json::parse(result.result_json);
+                    } catch (const std::exception& e) {
+                        LOG_WARN("Failed to parse capability result: {}", e.what());
+                        return json{{"success", true}, {"raw_result", result.result_json}};
+                    }
+                });
             });
 
         registry.register_tool(

@@ -15,7 +15,6 @@ add_library(lfs_mcp ${LFS_MCP_LIB_TYPE}
     mcp_http_server.cpp
     mcp_training_context.cpp
     llm_client.cpp
-    selection_client.cpp
 )
 
 target_include_directories(lfs_mcp
@@ -57,19 +56,3 @@ if(WIN32)
         RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_BINARY_DIR}
     )
 endif()
-
-# Standalone MCP server executable
-add_executable(lichtfeld-mcp
-    main.cpp
-)
-
-target_link_libraries(lichtfeld-mcp
-    PRIVATE
-    lfs_mcp
-    lfs_core
-    lfs_event_bridge
-    lfs_training
-    OpenImageIO::OpenImageIO
-)
-
-target_compile_features(lichtfeld-mcp PRIVATE cxx_std_23)

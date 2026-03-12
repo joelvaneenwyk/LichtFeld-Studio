@@ -2,13 +2,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "mcp_server.hpp"
+#include "core/event_bridge/command_center_bridge.hpp"
 #include "mcp_training_context.hpp"
 
-#include "core/event_bridge/command_center_bridge.hpp"
-#include "core/logger.hpp"
-
 #include <cassert>
-#include <iostream>
 
 namespace lfs::mcp {
 
@@ -20,60 +17,6 @@ namespace lfs::mcp {
     }
 
     McpServer::~McpServer() {
-        stop();
-    }
-
-    void McpServer::stop() {
-        running_.store(false);
-    }
-
-    std::string McpServer::read_line() {
-        std::string line;
-        std::getline(std::cin, line);
-        return line;
-    }
-
-    void McpServer::write_response(const std::string& response) {
-        std::lock_guard lock(io_mutex_);
-        std::cout << response << std::endl;
-        std::cout.flush();
-    }
-
-    void McpServer::run_stdio() {
-        running_.store(true);
-
-        register_builtin_tools();
-
-        LOG_INFO("MCP server started (stdio mode)");
-
-        while (running_.load() && !std::cin.eof()) {
-            std::string line = read_line();
-
-            if (line.empty()) {
-                continue;
-            }
-
-            try {
-                JsonRpcRequest req = parse_request(line);
-                JsonRpcResponse resp = handle_request(req);
-                std::string output = serialize_response(resp);
-                write_response(output);
-            } catch (const json::parse_error& e) {
-                auto resp = make_error_response(
-                    int64_t(0),
-                    JsonRpcError::PARSE_ERROR,
-                    std::string("Parse error: ") + e.what());
-                write_response(serialize_response(resp));
-            } catch (const std::exception& e) {
-                auto resp = make_error_response(
-                    int64_t(0),
-                    JsonRpcError::INTERNAL_ERROR,
-                    std::string("Internal error: ") + e.what());
-                write_response(serialize_response(resp));
-            }
-        }
-
-        LOG_INFO("MCP server stopped");
     }
 
     JsonRpcResponse McpServer::handle_request(const JsonRpcRequest& req) {
@@ -290,15 +233,4 @@ namespace lfs::mcp {
 
         return make_success_response(req.id, result);
     }
-
-    int run_mcp_server_main(int argc, char* argv[]) {
-        (void)argc;
-        (void)argv;
-
-        McpServer server;
-        server.run_stdio();
-
-        return 0;
-    }
-
 } // namespace lfs::mcp

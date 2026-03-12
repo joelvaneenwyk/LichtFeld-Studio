@@ -118,8 +118,6 @@ namespace lfs::vis {
         op::unregisterTransformOperators();
         op::operators().clear();
 
-        if (selection_server_)
-            selection_server_->stop();
         callback_cleanup_.clear();
         trainer_manager_.reset();
         brush_tool_.reset();
@@ -481,12 +479,11 @@ namespace lfs::vis {
         callback_cleanup_.add([] { python::set_export_callback(nullptr); });
     }
 
-    void VisualizerImpl::setupIpcServer() {
-        if (selection_server_)
+    void VisualizerImpl::setupViewContextBridge() {
+        if (view_context_bridge_initialized_)
             return;
 
-        selection_server_ = std::make_unique<SelectionServer>();
-        selection_server_->start();
+        view_context_bridge_initialized_ = true;
         if (rendering_manager_) {
             rendering_manager_->setOutputScreenPositions(true);
         }
@@ -562,24 +559,6 @@ namespace lfs::vis {
                 rendering_manager_->updateSettings(s);
             });
         callback_cleanup_.add([] { vis::set_render_settings_callbacks(nullptr, nullptr); });
-
-        selection_server_->setInvokeCapabilityCallback(
-            [this](const std::string& name, const std::string& args) -> CapabilityInvokeResult {
-                std::mutex mtx;
-                std::condition_variable cv;
-                CapabilityInvokeResult result;
-                bool done = false;
-
-                {
-                    std::lock_guard lock(capability_request_mutex_);
-                    pending_capability_request_ = CapabilityRequest{name, args, &result, &mtx, &cv, &done};
-                }
-
-                std::unique_lock lock(mtx);
-                cv.wait(lock, [&done] { return done; });
-
-                return result;
-            });
     }
 
     void VisualizerImpl::setupComponentConnections() {
@@ -591,7 +570,7 @@ namespace lfs::vis {
         main_loop_->setShouldCloseCallback([this]() { return allowclose(); });
     }
 
-    void VisualizerImpl::beginShutdown(const std::string_view reason) {
+    void VisualizerImpl::beginShutdown([[maybe_unused]] const std::string_view reason) {
         std::vector<WorkItem> pending_work;
         {
             std::lock_guard lock(work_queue_mutex_);
@@ -602,13 +581,10 @@ namespace lfs::vis {
             pending_work.swap(work_queue_);
         }
 
-        const std::string reason_string(reason);
         for (auto& work : pending_work) {
             if (work.cancel)
                 work.cancel();
         }
-
-        failPendingCapabilityRequest(reason_string);
 
         std::function<void()> shutdown_callback;
         {
@@ -617,27 +593,6 @@ namespace lfs::vis {
         }
         if (shutdown_callback)
             shutdown_callback();
-    }
-
-    void VisualizerImpl::failPendingCapabilityRequest(const std::string& reason) {
-        std::optional<CapabilityRequest> pending_request;
-        {
-            std::lock_guard lock(capability_request_mutex_);
-            if (!pending_capability_request_)
-                return;
-            pending_request = pending_capability_request_;
-            pending_capability_request_.reset();
-        }
-
-        pending_request->result->success = false;
-        pending_request->result->result_json.clear();
-        pending_request->result->error = reason;
-
-        {
-            std::lock_guard done_lock(*pending_request->mtx);
-            *pending_request->done = true;
-        }
-        pending_request->cv->notify_one();
     }
 
     void VisualizerImpl::setupEventHandlers() {
@@ -863,7 +818,7 @@ namespace lfs::vis {
             initializeTools();
         }
 
-        setupIpcServer();
+        setupViewContextBridge();
 
         if (scene_manager_)
             scene_manager_->initSelectionService();
@@ -880,11 +835,6 @@ namespace lfs::vis {
     void VisualizerImpl::update() {
         window_manager_->updateWindowSize();
 
-        // Process MCP selection commands from the IPC server
-        if (selection_server_) {
-            selection_server_->process_pending_commands();
-        }
-
         // Process MCP work queue
         {
             std::vector<WorkItem> work;
@@ -895,23 +845,6 @@ namespace lfs::vis {
             for (auto& item : work) {
                 if (item.run)
                     item.run();
-            }
-        }
-
-        // Process pending capability request from IPC thread
-        {
-            std::lock_guard lock(capability_request_mutex_);
-            if (pending_capability_request_) {
-                auto& req = *pending_capability_request_;
-                *req.result = processCapabilityRequest(req.name, req.args);
-
-                // Signal completion
-                {
-                    std::lock_guard done_lock(*req.mtx);
-                    *req.done = true;
-                }
-                req.cv->notify_one();
-                pending_capability_request_.reset();
             }
         }
 
@@ -1111,11 +1044,6 @@ namespace lfs::vis {
     void VisualizerImpl::shutdown() {
         beginShutdown();
 
-        if (selection_server_) {
-            selection_server_->stop();
-            selection_server_.reset();
-        }
-
         // Stop training before GPU resources are freed
         if (trainer_manager_) {
             if (trainer_manager_->isTrainingActive()) {
@@ -1313,24 +1241,6 @@ namespace lfs::vis {
 
     void VisualizerImpl::handleSwitchToLatestCheckpoint() {
         LOG_WARN("Switch to latest checkpoint not implemented without project management");
-    }
-
-    CapabilityInvokeResult VisualizerImpl::processCapabilityRequest(const std::string& name, const std::string& args) {
-        LOG_INFO("processCapabilityRequest: {} args={}", name, args);
-
-        if (!scene_manager_) {
-            LOG_WARN("processCapabilityRequest: scene_manager_ is NULL");
-            return {false, "", "No scene available"};
-        }
-
-        python::SceneContextGuard ctx(&scene_manager_->getScene());
-        auto result = python::invoke_capability(name, args);
-
-        if (result.success && rendering_manager_) {
-            rendering_manager_->markDirty(DirtyFlag::ALL);
-        }
-
-        return {result.success, result.result_json, result.error};
     }
 
 } // namespace lfs::vis

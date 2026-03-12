@@ -4,13 +4,13 @@
 #include "mcp_training_context.hpp"
 #include "llm_client.hpp"
 #include "mcp_tools.hpp"
-#include "selection_client.hpp"
 
 #include "core/base64.hpp"
 #include "core/checkpoint_format.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
 #include "core/logger.hpp"
 #include "io/exporter.hpp"
+#include "python/python_runtime.hpp"
 #include "python/runner.hpp"
 #include "rendering/gs_rasterizer_tensor.hpp"
 #include "rendering/rasterizer/rasterization/include/forward.h"
@@ -109,6 +109,23 @@ namespace lfs::mcp {
                                                      core::DataType::Float32);
             device_buffer.copy_from(host_view);
             return device_buffer;
+        }
+
+        json invoke_plugin_capability(core::Scene* scene,
+                                      const std::string& capability,
+                                      const std::string& args_json) {
+            python::SceneContextGuard ctx(scene);
+            auto result = python::invoke_capability(capability, args_json);
+            if (!result.success) {
+                return json{{"success", false}, {"error", result.error}};
+            }
+
+            try {
+                return json::parse(result.result_json);
+            } catch (const std::exception& e) {
+                LOG_WARN("Failed to parse capability result: {}", e.what());
+                return json{{"success", true}, {"raw_result", result.result_json}};
+            }
         }
 
         std::expected<int, std::string> pick_headless_ring_gaussian(
@@ -776,15 +793,6 @@ namespace lfs::mcp {
                 const std::string mode = args.value("mode", "replace");
                 const int camera_index = args.value("camera_index", 0);
 
-                SelectionClient client;
-                if (client.is_gui_running()) {
-                    auto result = client.select_rect(x0, y0, x1, y1, mode, camera_index);
-                    if (!result) {
-                        return json{{"error", result.error()}};
-                    }
-                    return json{{"success", true}, {"via_gui", true}};
-                }
-
                 auto& ctx = TrainingContext::instance();
                 auto screen_pos_result = ctx.compute_screen_positions(camera_index);
                 if (!screen_pos_result) {
@@ -850,15 +858,6 @@ namespace lfs::mcp {
                 }
 
                 const std::string mode = args.value("mode", "replace");
-
-                SelectionClient client;
-                if (client.is_gui_running()) {
-                    auto result = client.select_polygon(vertex_data, mode, camera_index);
-                    if (!result) {
-                        return json{{"error", result.error()}};
-                    }
-                    return json{{"success", true}, {"via_gui", true}};
-                }
 
                 auto screen_pos_result = ctx.compute_screen_positions(camera_index);
                 if (!screen_pos_result) {
@@ -928,15 +927,6 @@ namespace lfs::mcp {
 
                 const std::string mode = args.value("mode", "replace");
 
-                SelectionClient client;
-                if (client.is_gui_running()) {
-                    auto result = client.select_lasso(vertex_data, mode, camera_index);
-                    if (!result) {
-                        return json{{"error", result.error()}};
-                    }
-                    return json{{"success", true}, {"via_gui", true}};
-                }
-
                 auto screen_pos_result = ctx.compute_screen_positions(camera_index);
                 if (!screen_pos_result) {
                     return json{{"error", screen_pos_result.error()}};
@@ -994,15 +984,6 @@ namespace lfs::mcp {
                 const float y = args["y"].get<float>();
                 int camera_index = args.value("camera_index", 0);
                 const std::string mode = args.value("mode", "replace");
-
-                SelectionClient client;
-                if (client.is_gui_running()) {
-                    auto result = client.select_ring(x, y, mode, camera_index);
-                    if (!result) {
-                        return json{{"error", result.error()}};
-                    }
-                    return json{{"success", true}, {"via_gui", true}};
-                }
 
                 auto scene = ctx.scene();
                 if (!scene) {
@@ -1068,15 +1049,6 @@ namespace lfs::mcp {
                 const float radius = args.value("radius", 20.0f);
                 const int camera_index = args.value("camera_index", 0);
                 const std::string mode = args.value("mode", "replace");
-
-                SelectionClient client;
-                if (client.is_gui_running()) {
-                    auto result = client.select_brush(x, y, radius, mode, camera_index);
-                    if (!result) {
-                        return json{{"error", result.error()}};
-                    }
-                    return json{{"success", true}, {"via_gui", true}};
-                }
 
                 auto screen_pos_result = ctx.compute_screen_positions(camera_index);
                 if (!screen_pos_result) {
@@ -1175,26 +1147,13 @@ namespace lfs::mcp {
                     return json{{"error", "Missing capability name"}};
                 }
 
-                SelectionClient client;
-                if (!client.is_gui_running()) {
-                    return json{{"error", "GUI not running"}};
-                }
-
                 const std::string args_json = args.contains("args") ? args["args"].dump() : "{}";
-                auto result = client.invoke_capability(capability, args_json);
-                if (!result) {
-                    return json{{"error", result.error()}};
+                auto scene = TrainingContext::instance().scene();
+                if (!scene) {
+                    return json{{"error", "No scene loaded"}};
                 }
 
-                if (!result->success) {
-                    return json{{"success", false}, {"error", result->error}};
-                }
-
-                try {
-                    return json::parse(result->result_json);
-                } catch (...) {
-                    return json{{"success", true}};
-                }
+                return invoke_plugin_capability(scene.get(), capability, args_json);
             });
 
         registry.register_tool(
@@ -1284,23 +1243,6 @@ namespace lfs::mcp {
                 const float y0 = bbox["y0"].get<float>();
                 const float x1 = bbox["x1"].get<float>();
                 const float y1 = bbox["y1"].get<float>();
-
-                // Try to send selection to GUI if running
-                SelectionClient selection_client;
-                if (selection_client.is_gui_running()) {
-                    auto sel_result = selection_client.select_rect(x0, y0, x1, y1, "replace", camera_index);
-                    if (!sel_result) {
-                        return json{{"error", sel_result.error()}};
-                    }
-                    json gui_response;
-                    gui_response["success"] = true;
-                    gui_response["via_gui"] = true;
-                    gui_response["bounding_box"] = bbox;
-                    gui_response["description"] = description;
-                    return gui_response;
-                }
-
-                // Fall back to headless selection
                 auto screen_pos_result = ctx.compute_screen_positions(camera_index);
                 if (!screen_pos_result) {
                     return json{{"error", screen_pos_result.error()}};

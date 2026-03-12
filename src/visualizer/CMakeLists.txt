@@ -133,8 +133,7 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
         # Python hook invoker (DLL boundary singleton)
         ${CMAKE_SOURCE_DIR}/src/python/ui_hooks.cpp
 
-        # IPC for MCP integration
-        ipc/selection_server.cpp
+        # View/render bridge for plugin capabilities
         ipc/view_context.cpp
 
         gui/panels/menu_bar.cpp

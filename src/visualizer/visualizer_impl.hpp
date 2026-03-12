@@ -11,7 +11,6 @@
 #include "gui/gui_manager.hpp"
 #include "input/input_controller.hpp"
 #include "internal/viewport.hpp"
-#include "ipc/selection_server.hpp"
 #include "ipc/view_context.hpp"
 #include "rendering/rendering.hpp"
 #include "rendering/rendering_manager.hpp"
@@ -21,11 +20,9 @@
 #include "visualizer/visualizer.hpp"
 #include "window/window_manager.hpp"
 #include <chrono>
-#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -163,12 +160,8 @@ namespace lfs::vis {
 
         // Subsystem wiring
         void setupPythonBridge();
-        void setupIpcServer();
+        void setupViewContextBridge();
         void beginShutdown(std::string_view reason = "Viewer is shutting down");
-        void failPendingCapabilityRequest(const std::string& reason);
-
-        // Plugin capability invocation (runs on main thread with scene context)
-        [[nodiscard]] CapabilityInvokeResult processCapabilityRequest(const std::string& name, const std::string& args);
 
         class CallbackCleanup {
             std::vector<std::function<void()>> cleanups_;
@@ -209,21 +202,6 @@ namespace lfs::vis {
         // Centralized editor state
         EditorContext editor_context_;
 
-        // IPC for MCP selection commands
-        std::unique_ptr<SelectionServer> selection_server_;
-
-        // Capability request synchronization (IPC thread waits for main thread to process)
-        struct CapabilityRequest {
-            std::string name;
-            std::string args;
-            CapabilityInvokeResult* result = nullptr;
-            std::mutex* mtx = nullptr;
-            std::condition_variable* cv = nullptr;
-            bool* done = nullptr;
-        };
-        std::optional<CapabilityRequest> pending_capability_request_;
-        std::mutex capability_request_mutex_;
-
         std::mutex work_queue_mutex_;
         std::vector<WorkItem> work_queue_;
         bool accepting_work_ = true;
@@ -239,6 +217,7 @@ namespace lfs::vis {
         bool window_initialized_ = false;
         bool gui_initialized_ = false;
         bool tools_initialized_ = false;
+        bool view_context_bridge_initialized_ = false;
         bool pending_auto_train_ = false;
         bool pending_reset_ = false;
         bool gui_frame_rendered_ = false;

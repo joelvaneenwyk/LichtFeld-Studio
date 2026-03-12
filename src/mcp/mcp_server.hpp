@@ -8,11 +8,7 @@
 #include "mcp_tools.hpp"
 
 #include <atomic>
-#include <functional>
-#include <memory>
 #include <string>
-#include <thread>
-#include <vector>
 
 namespace lfs::mcp {
 
@@ -30,11 +26,6 @@ namespace lfs::mcp {
         McpServer(const McpServer&) = delete;
         McpServer& operator=(const McpServer&) = delete;
 
-        void run_stdio();
-        void stop();
-
-        bool is_running() const { return running_.load(); }
-
         JsonRpcResponse handle_request(const JsonRpcRequest& req);
 
     private:
@@ -46,15 +37,8 @@ namespace lfs::mcp {
         JsonRpcResponse handle_resources_read(const JsonRpcRequest& req);
         JsonRpcResponse handle_ping(const JsonRpcRequest& req);
 
-        void write_response(const std::string& response);
-        std::string read_line();
-
-        std::atomic<bool> running_{false};
         std::atomic<bool> initialized_{false};
         McpCapabilities capabilities_;
-        std::mutex io_mutex_;
     };
-
-    LFS_MCP_API int run_mcp_server_main(int argc, char* argv[]);
 
 } // namespace lfs::mcp
