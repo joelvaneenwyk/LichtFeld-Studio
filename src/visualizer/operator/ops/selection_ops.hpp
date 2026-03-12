@@ -4,9 +4,9 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include "operator/operator.hpp"
 #include "selection/selection_service.hpp"
-#include "core/export.hpp"
 
 namespace lfs::vis::op {
 
