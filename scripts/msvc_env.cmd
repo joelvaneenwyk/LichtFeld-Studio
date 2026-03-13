@@ -1,20 +1,20 @@
 @echo off
 REM ============================================================================
-REM msvc_env.cmd - Minimal MSVC environment wrapper
+REM msvc_env.cmd - Minimal MSVC environment setup
 REM
 REM Sets up the bare minimum for MSVC builds WITHOUT calling vcvarsall.bat
 REM (which bloats PATH past the 8191-char batch limit on many dev machines).
 REM
 REM What it does:
-REM   1. Adds cl.exe's directory to PATH (provides link.exe, lib.exe, etc.)
+REM   1. Adds cl.exe's directory + Windows SDK bin dir to PATH
 REM   2. Sets LIB to MSVC + Windows SDK library directories
 REM   3. Sets INCLUDE to MSVC + Windows SDK header directories
 REM
-REM Usage: msvc_env.cmd <command> [arguments...]
+REM Usage: call scripts\msvc_env.cmd && cmake ...
 REM ============================================================================
 
-REM If cl.exe is already on PATH, skip setup
-where cl.exe >nul 2>&1 && goto :run
+REM If cl.exe is already on PATH, nothing to do
+where cl.exe >nul 2>&1 && exit /b 0
 
 setlocal EnableDelayedExpansion
 
@@ -78,7 +78,4 @@ endlocal & (
 )
 
 echo [msvc_env] MSVC tools added to PATH 1>&2
-
-:run
-%*
-exit /b %ERRORLEVEL%
+exit /b 0

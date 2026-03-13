@@ -8,12 +8,35 @@ vars:
   VCPKG_ROOT: '{{joinPath .ROOT_DIR "../vcpkg"}}'
   TOOLCHAIN_FILE: '{{joinPath .VCPKG_ROOT "scripts/buildsystems/vcpkg.cmake"}}'
   EXE: '{{joinPath .BUILD_DIR "LichtFeld-Studio.exe"}}'
-  # Locate cl.exe for CUDA host compiler (Windows only; empty on other OS).
-  # Short 8.3 path avoids quoting issues with spaces.
+
+  # ── Windows-only tool discovery (empty on Linux/macOS) ──────────────
+  # Uses vswhere to locate the latest MSVC cl.exe.
+  # Returns 8.3 short path with forward slashes (no spaces, safe everywhere).
+  # All lines at same indent so >- folds them into one line for sh/PowerShell.
   CL_EXE:
-    sh: 'cmd.exe /c scripts\\find_cl.cmd 2>/dev/null || true'
+    sh: >-
+      powershell -NoProfile -ExecutionPolicy Bypass -Command '
+      $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe";
+      if (-not (Test-Path $vswhere)) { exit 0 };
+      $cl = & $vswhere -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find "VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" | Select-Object -Last 1;
+      if (-not $cl) { $cl = & $vswhere -latest -products Microsoft.VisualStudio.Product.BuildTools -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find "VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" | Select-Object -Last 1 };
+      if (-not $cl) { exit 0 };
+      $short = (New-Object -ComObject Scripting.FileSystemObject).GetFile($cl).ShortPath;
+      [Console]::Out.Write(($short -replace "\\","/"))
+      ' 2>/dev/null || true
+
+  # Locate Windows SDK rc.exe (latest version).
+  # Returns 8.3 short path with forward slashes.
   RC_EXE:
-    sh: 'cmd.exe /c scripts\\find_rc.cmd 2>/dev/null || true'
+    sh: >-
+      powershell -NoProfile -ExecutionPolicy Bypass -Command '
+      $sdk = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin";
+      if (-not (Test-Path $sdk)) { exit 0 };
+      $rc = Get-ChildItem "$sdk\*\x64\rc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1;
+      if (-not $rc) { exit 0 };
+      $short = (New-Object -ComObject Scripting.FileSystemObject).GetFile($rc.FullName).ShortPath;
+      [Console]::Out.Write(($short -replace "\\","/"))
+      ' 2>/dev/null || true
 
 tasks:
   default:
@@ -47,11 +70,10 @@ tasks:
     env:
       VCPKG_ROOT: "{{.VCPKG_ROOT}}"
     cmds:
-      # Windows: run cmake inside minimal MSVC env (cl.exe dir on PATH — NOT
-      # vcvarsall, which bloats PATH past the 8191-char batch limit).
-      # Explicitly point cmake at every MSVC / Windows SDK tool it needs.
+      # Windows: call msvc_env.cmd to set PATH/LIB/INCLUDE, then && cmake
+      # in the same cmd.exe process (env mutations don't cross Task commands).
       - cmd: >-
-          cmd /c "scripts\\msvc_env.cmd
+          cmd.exe /d /s /c "call scripts\msvc_env.cmd &&
           cmake -B {{.BUILD_DIR}}
           -DCMAKE_BUILD_TYPE={{.BUILD_TYPE}}
           -G Ninja
@@ -85,7 +107,9 @@ tasks:
     generates:
       - "{{.EXE}}"
     cmds:
-      - cmd: cmd /c "scripts\\msvc_env.cmd cmake --build {{.BUILD_DIR}} -j"
+      - cmd: >-
+          cmd.exe /d /s /c "call scripts\msvc_env.cmd &&
+          cmake --build {{.BUILD_DIR}} -j"
         platforms: [windows]
       - cmd: cmake --build {{.BUILD_DIR}} -j
         platforms: [linux, darwin]
@@ -110,7 +134,9 @@ tasks:
     desc: Build and run tests
     deps: [configure]
     cmds:
-      - cmd: cmd /c "scripts\\msvc_env.cmd cmake --build {{.BUILD_DIR}} -j --target lichtfeld_tests"
+      - cmd: >-
+          cmd.exe /d /s /c "call scripts\msvc_env.cmd &&
+          cmake --build {{.BUILD_DIR}} -j --target lichtfeld_tests"
         platforms: [windows]
       - cmd: cmake --build {{.BUILD_DIR}} -j --target lichtfeld_tests
         platforms: [linux, darwin]
