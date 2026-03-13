@@ -41,3 +41,6 @@ src/python/stubs/lichtfeld/build_info.pyi
 tasks/
 
 .task/
+
+/source*/
+/*.log

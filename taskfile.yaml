@@ -5,9 +5,15 @@ version: "3"
 vars:
   BUILD_TYPE: Release
   BUILD_DIR: build
-  VCPKG_ROOT: "{{.ROOT_DIR}}/../vcpkg"
-  TOOLCHAIN_FILE: "{{.VCPKG_ROOT}}/scripts/buildsystems/vcpkg.cmake"
-  EXE: "{{.BUILD_DIR}}/LichtFeld-Studio.exe"
+  VCPKG_ROOT: '{{joinPath .ROOT_DIR "../vcpkg"}}'
+  TOOLCHAIN_FILE: '{{joinPath .VCPKG_ROOT "scripts/buildsystems/vcpkg.cmake"}}'
+  EXE: '{{joinPath .BUILD_DIR "LichtFeld-Studio.exe"}}'
+  # Locate cl.exe for CUDA host compiler (Windows only; empty on other OS).
+  # Short 8.3 path avoids quoting issues with spaces.
+  CL_EXE:
+    sh: 'cmd.exe /c scripts\\find_cl.cmd 2>/dev/null || true'
+  RC_EXE:
+    sh: 'cmd.exe /c scripts\\find_rc.cmd 2>/dev/null || true'
 
 tasks:
   default:
@@ -17,10 +23,13 @@ tasks:
   vcpkg:
     desc: Clone and bootstrap vcpkg (one-time setup)
     status:
-      - test -f {{.VCPKG_ROOT}}/vcpkg.exe
+      - test -f "{{joinPath .VCPKG_ROOT "vcpkg.exe"}}"
     cmds:
-      - git clone https://github.com/microsoft/vcpkg.git {{.VCPKG_ROOT}}
-      - cmd: "{{.VCPKG_ROOT}}/bootstrap-vcpkg.bat -disableMetrics"
+      - git clone https://github.com/microsoft/vcpkg.git "{{.VCPKG_ROOT}}"
+      - cmd: cmd.exe /c "{{.VCPKG_ROOT}}/bootstrap-vcpkg.bat" -disableMetrics
+        platforms: [windows]
+      - cmd: "{{.VCPKG_ROOT}}/bootstrap-vcpkg.sh -disableMetrics"
+        platforms: [linux, darwin]
 
   configure:
     desc: Configure CMake build
@@ -34,15 +43,30 @@ tasks:
       - tests/CMakeLists.txt
       - external/CMakeLists.txt
     generates:
-      - "{{.BUILD_DIR}}/build.ninja"
+      - '{{joinPath .BUILD_DIR "build.ninja"}}'
     env:
       VCPKG_ROOT: "{{.VCPKG_ROOT}}"
     cmds:
-      - >-
-        cmake -B {{.BUILD_DIR}}
-        -DCMAKE_BUILD_TYPE={{.BUILD_TYPE}}
-        -G Ninja
-        -DCMAKE_TOOLCHAIN_FILE={{.TOOLCHAIN_FILE}}
+      # Windows: run cmake inside minimal MSVC env (cl.exe dir on PATH — NOT
+      # vcvarsall, which bloats PATH past the 8191-char batch limit).
+      # Explicitly point cmake at every MSVC / Windows SDK tool it needs.
+      - cmd: >-
+          cmd /c "scripts\\msvc_env.cmd
+          cmake -B {{.BUILD_DIR}}
+          -DCMAKE_BUILD_TYPE={{.BUILD_TYPE}}
+          -G Ninja
+          -DCMAKE_TOOLCHAIN_FILE={{.TOOLCHAIN_FILE}}
+          -DCMAKE_C_COMPILER={{.CL_EXE}}
+          -DCMAKE_CXX_COMPILER={{.CL_EXE}}
+          -DCMAKE_CUDA_HOST_COMPILER={{.CL_EXE}}
+          -DCMAKE_RC_COMPILER={{.RC_EXE}}"
+        platforms: [windows]
+      - cmd: >-
+          cmake -B {{.BUILD_DIR}}
+          -DCMAKE_BUILD_TYPE={{.BUILD_TYPE}}
+          -G Ninja
+          -DCMAKE_TOOLCHAIN_FILE={{.TOOLCHAIN_FILE}}
+        platforms: [linux, darwin]
 
   build:
     desc: Build LichtFeld Studio
@@ -61,7 +85,10 @@ tasks:
     generates:
       - "{{.EXE}}"
     cmds:
-      - cmake --build {{.BUILD_DIR}} -j
+      - cmd: cmd /c "scripts\\msvc_env.cmd cmake --build {{.BUILD_DIR}} -j"
+        platforms: [windows]
+      - cmd: cmake --build {{.BUILD_DIR}} -j
+        platforms: [linux, darwin]
 
   run:
     desc: Build and run LichtFeld Studio
@@ -72,10 +99,7 @@ tasks:
   clean:
     desc: Remove build directory
     cmds:
-      - cmd: powershell -Command "Remove-Item -Recurse -Force {{.BUILD_DIR}} -ErrorAction SilentlyContinue"
-        platforms: [windows]
-      - cmd: rm -rf {{.BUILD_DIR}}
-        platforms: [linux, darwin]
+      - rm -rf {{.BUILD_DIR}}
 
   ci:
     desc: Run full CI build via PowerShell script (includes env checks, vcpkg, LibTorch)
@@ -86,5 +110,8 @@ tasks:
     desc: Build and run tests
     deps: [configure]
     cmds:
-      - cmake --build {{.BUILD_DIR}} -j --target lichtfeld_tests
-      - "{{.BUILD_DIR}}/lichtfeld_tests"
+      - cmd: cmd /c "scripts\\msvc_env.cmd cmake --build {{.BUILD_DIR}} -j --target lichtfeld_tests"
+        platforms: [windows]
+      - cmd: cmake --build {{.BUILD_DIR}} -j --target lichtfeld_tests
+        platforms: [linux, darwin]
+      - '{{joinPath .BUILD_DIR "lichtfeld_tests"}}'
