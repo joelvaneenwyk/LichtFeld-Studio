@@ -1,0 +1,90 @@
+# https://taskfile.dev
+
+version: "3"
+
+vars:
+  BUILD_TYPE: Release
+  BUILD_DIR: build
+  VCPKG_ROOT: "{{.ROOT_DIR}}/../vcpkg"
+  TOOLCHAIN_FILE: "{{.VCPKG_ROOT}}/scripts/buildsystems/vcpkg.cmake"
+  EXE: "{{.BUILD_DIR}}/LichtFeld-Studio.exe"
+
+tasks:
+  default:
+    desc: Build and run LichtFeld Studio
+    deps: [run]
+
+  vcpkg:
+    desc: Clone and bootstrap vcpkg (one-time setup)
+    status:
+      - test -f {{.VCPKG_ROOT}}/vcpkg.exe
+    cmds:
+      - git clone https://github.com/microsoft/vcpkg.git {{.VCPKG_ROOT}}
+      - cmd: "{{.VCPKG_ROOT}}/bootstrap-vcpkg.bat -disableMetrics"
+
+  configure:
+    desc: Configure CMake build
+    deps: [vcpkg]
+    sources:
+      - CMakeLists.txt
+      - vcpkg.json
+      - vcpkg-configuration.json
+      - cmake/**/*
+      - src/**/CMakeLists.txt
+      - tests/CMakeLists.txt
+      - external/CMakeLists.txt
+    generates:
+      - "{{.BUILD_DIR}}/build.ninja"
+    env:
+      VCPKG_ROOT: "{{.VCPKG_ROOT}}"
+    cmds:
+      - >-
+        cmake -B {{.BUILD_DIR}}
+        -DCMAKE_BUILD_TYPE={{.BUILD_TYPE}}
+        -G Ninja
+        -DCMAKE_TOOLCHAIN_FILE={{.TOOLCHAIN_FILE}}
+
+  build:
+    desc: Build LichtFeld Studio
+    deps: [configure]
+    sources:
+      - src/**/*.cpp
+      - src/**/*.cu
+      - src/**/*.h
+      - src/**/*.hpp
+      - src/**/*.cuh
+      - external/**/*.cpp
+      - external/**/*.hpp
+      - external/**/*.h
+      - CMakeLists.txt
+      - src/**/CMakeLists.txt
+    generates:
+      - "{{.EXE}}"
+    cmds:
+      - cmake --build {{.BUILD_DIR}} -j
+
+  run:
+    desc: Build and run LichtFeld Studio
+    deps: [build]
+    cmds:
+      - "{{.EXE}}"
+
+  clean:
+    desc: Remove build directory
+    cmds:
+      - cmd: powershell -Command "Remove-Item -Recurse -Force {{.BUILD_DIR}} -ErrorAction SilentlyContinue"
+        platforms: [windows]
+      - cmd: rm -rf {{.BUILD_DIR}}
+        platforms: [linux, darwin]
+
+  ci:
+    desc: Run full CI build via PowerShell script (includes env checks, vcpkg, LibTorch)
+    cmds:
+      - powershell -ExecutionPolicy Bypass -File ./build_lichtfeld.ps1
+
+  test:
+    desc: Build and run tests
+    deps: [configure]
+    cmds:
+      - cmake --build {{.BUILD_DIR}} -j --target lichtfeld_tests
+      - "{{.BUILD_DIR}}/lichtfeld_tests"
