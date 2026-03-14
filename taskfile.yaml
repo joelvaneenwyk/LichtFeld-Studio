@@ -25,6 +25,20 @@ vars:
       [Console]::Out.Write(($short -replace "\\","/"))
       ' 2>/dev/null || true
 
+  # MSVC link.exe lives next to cl.exe. Derive from CL_EXE to avoid
+  # MinGW ld.exe / Git link.exe being picked up from PATH.
+  LINK_EXE:
+    sh: >-
+      powershell -NoProfile -ExecutionPolicy Bypass -Command '
+      $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe";
+      if (-not (Test-Path $vswhere)) { exit 0 };
+      $link = & $vswhere -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find "VC\Tools\MSVC\*\bin\Hostx64\x64\link.exe" | Select-Object -Last 1;
+      if (-not $link) { $link = & $vswhere -latest -products Microsoft.VisualStudio.Product.BuildTools -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find "VC\Tools\MSVC\*\bin\Hostx64\x64\link.exe" | Select-Object -Last 1 };
+      if (-not $link) { exit 0 };
+      $short = (New-Object -ComObject Scripting.FileSystemObject).GetFile($link).ShortPath;
+      [Console]::Out.Write(($short -replace "\\","/"))
+      ' 2>/dev/null || true
+
   # Locate Windows SDK rc.exe (latest version).
   # Returns 8.3 short path with forward slashes.
   RC_EXE:
@@ -35,6 +49,19 @@ vars:
       $rc = Get-ChildItem "$sdk\*\x64\rc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1;
       if (-not $rc) { exit 0 };
       $short = (New-Object -ComObject Scripting.FileSystemObject).GetFile($rc.FullName).ShortPath;
+      [Console]::Out.Write(($short -replace "\\","/"))
+      ' 2>/dev/null || true
+
+  # Discover the latest installed CUDA Toolkit (picks highest version dir).
+  # Returns 8.3 short path with forward slashes (no spaces, safe everywhere).
+  CUDA_DIR:
+    sh: >-
+      powershell -NoProfile -ExecutionPolicy Bypass -Command '
+      $base = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA";
+      if (-not (Test-Path $base)) { exit 0 };
+      $latest = Get-ChildItem $base -Directory | Where-Object { Test-Path (Join-Path $_.FullName "bin\nvcc.exe") } | Sort-Object Name -Descending | Select-Object -First 1;
+      if (-not $latest) { exit 0 };
+      $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($latest.FullName).ShortPath;
       [Console]::Out.Write(($short -replace "\\","/"))
       ' 2>/dev/null || true
 
@@ -69,6 +96,8 @@ tasks:
       - '{{joinPath .BUILD_DIR "build.ninja"}}'
     env:
       VCPKG_ROOT: "{{.VCPKG_ROOT}}"
+      CUDA_PATH: "{{.CUDA_DIR}}"
+      CUDAToolkit_ROOT: "{{.CUDA_DIR}}"
     cmds:
       # Windows: call msvc_env.cmd to set PATH/LIB/INCLUDE, then && cmake
       # in the same cmd.exe process (env mutations don't cross Task commands).
@@ -81,6 +110,8 @@ tasks:
           -DCMAKE_C_COMPILER={{.CL_EXE}}
           -DCMAKE_CXX_COMPILER={{.CL_EXE}}
           -DCMAKE_CUDA_HOST_COMPILER={{.CL_EXE}}
+          -DCMAKE_CUDA_COMPILER={{.CUDA_DIR}}/bin/nvcc.exe
+          -DCMAKE_LINKER={{.LINK_EXE}}
           -DCMAKE_RC_COMPILER={{.RC_EXE}}"
         platforms: [windows]
       - cmd: >-
@@ -118,7 +149,7 @@ tasks:
     desc: Build and run LichtFeld Studio
     deps: [build]
     cmds:
-      - "{{.EXE}}"
+      - "./{{.EXE}}"
 
   clean:
     desc: Remove build directory
@@ -140,4 +171,4 @@ tasks:
         platforms: [windows]
       - cmd: cmake --build {{.BUILD_DIR}} -j --target lichtfeld_tests
         platforms: [linux, darwin]
-      - '{{joinPath .BUILD_DIR "lichtfeld_tests"}}'
+      - './{{joinPath .BUILD_DIR "lichtfeld_tests"}}'
